@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatic AI Attendance & Geofence System</title>
+
+    <!-- Web App & Manifest Integration -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#007bff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://via.placeholder.com/512">
+
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; margin: 0; }
+        .container { background: white; max-width: 450px; margin: auto; padding: 25px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        #video-container { position: relative; width: 100%; max-width: 400px; margin: 15px auto; }
+        video { width: 100%; border-radius: 10px; background: #000; transform: scaleX(-1); }
+        .status-msg { font-weight: bold; margin-top: 10px; }
+        .success { color: green; font-weight: bold; margin-top: 15px; }
+        .error { color: red; font-weight: bold; margin-top: 15px; }
+        .preview-img { width: 100%; max-width: 200px; border-radius: 10px; margin-top: 10px; border: 2px solid #28a745; }
+
+        /* Action Buttons */
+        .btn { background: #007bff; color: white; border: none; padding: 10px 15px; font-size: 14px; border-radius: 5px; cursor: pointer; margin-top: 10px; }
+        .btn:hover { background: #0056b3; }
+        .btn-admin { background: #28a745; }
+        .btn-admin:hover { background: #218838; }
+
+        /* Modal Popup Styles */
+        .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; text-align: left; }
+        .modal-content h3 { margin-top: 0; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .close-btn { background: #dc3545; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>📷 Automatic AI Attendance & Geofence</h2>
+    <p id="status-info" style="color: blue;">AI Models Load Ho Rahe Hain...</p>
+
+    <div id="video-container">
+        <video id="video" autoplay playsinline muted></video>
+    </div>
+
+    <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register New Student (Admin)</button>
+
+    <canvas id="hidden-canvas" width="400" height="300" style="display:none;"></canvas>
+    <div id="result"></div>
+    <div id="geo-status" class="status-msg" style="color: #555;"></div>
+</div>
+
+<!-- Admin Password Modal -->
+<div id="auth-modal" class="modal">
+    <div class="modal-content">
+        <h3>🔒 Admin Password Required</h3>
+        <p style="font-size: 13px; color: #666;">New student registration ke liye password enter karein.</p>
+        <div class="form-group">
+            <label>Admin Password:</label>
+            <input type="password" id="admin-pass-input" placeholder="Enter password">
+        </div>
+        <p id="auth-error" class="error" style="display:none; font-size:12px; margin-top:0;"></p>
+        <button class="btn" onclick="verifyAdminPassword()">Verify & Open Form</button>
+        <button class="btn close-btn" onclick="closeModal('auth-modal')">Cancel</button>
+    </div>
+</div>
+
+<!-- Registration Modal -->
+<div id="register-modal" class="modal">
+    <div class="modal-content">
+        <h3>📝 Student Registration</h3>
+        <div class="form-group">
+            <label>Student ID:</label>
+            <input type="text" id="reg-id" placeholder="e.g. STU101">
+        </div>
+        <div class="form-group">
+            <label>Full Name:</label>
+            <input type="text" id="reg-name" placeholder="e.g. Rahul Sharma">
+        </div>
+        <div class="form-group">
+            <label>Parent Mobile No (SMS):</label>
+            <input type="text" id="reg-parent" placeholder="e.g. 919876543210">
+        </div>
+        <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
+        <button class="btn btn-admin" onclick="captureAndRegisterStudent()">Scan Face & Register</button>
+        <button class="btn close-btn" onclick="closeModal('register-modal')">Close</button>
+    </div>
+</div>
+
+<script>
+    // Configuration Settings
+    const CONFIG = {
+        allowedLat: 26.944020,
+        allowedLng: 81.092274,
+        allowedRadius: 5000, // in meters
+        modelUrl: 'https://justadudewhohacks.github.io/face-api.js/models',
+        fast2SmsApiKey: 'L3ubCJQetAhofnq7wGyvKdrpVgOH0D5WzIUMXSmYl4Zsx68Ei17wxec3fKGEXmJtbQzAhiRZkpML2UT4',
+        cloudinaryPreset: '176173983799991PRESET_NAME_dzxw4vxpj',
+        cloudinaryCloudName: 'dzxw4vxpj',
+        adminPassword: 'admin123' // Set your custom admin password here
+    };
+
+    // State Variables
+    let globalStream = null;
+    let activeStudentId = '';
+    let activeStatus = '';
+    let extraMessageInfo = '';
+    let faceDetectionInterval = null;
+    let watchGeoId = null;
+    let isInsideGeofence = true;
+
+    // Helper: Local Storage Reader & Writer
+    function getRegisteredStudents() {
+        return JSON.parse(localStorage.getItem('registered_students_db')) || {};
+    }
+
+    function saveRegisteredStudents(data) {
+        localStorage.setItem('registered_students_db', JSON.stringify(data));
+    }
+
+    // Load AI Models
+    Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(CONFIG.modelUrl),
+        faceapi.nets.faceLandmark68Net.loadFromUri(CONFIG.modelUrl),
+        faceapi.nets.faceRecognitionNet.loadFromUri(CONFIG.modelUrl)
+    ]).then(() => {
+        startCamera();
+    }).catch(err => {
+        document.getElementById('status-info').innerHTML = `<b class="error">❌ AI Models Load Fail: ${err.message}</b>`;
+    });
+
+    // Camera Handler
+    function startCamera() {
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+            .then(stream => {
+                globalStream = stream;
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    detectAndMatchFaceContinuously();
+                };
+            })
+            .catch(() => {
+                document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Fail!</b>';
+            });
+    }
+
+    // Modal Control Functions
+    function openAdminAuth() {
+        document.getElementById('admin-pass-input').value = '';
+        document.getElementById('auth-error').style.display = 'none';
+        document.getElementById('auth-modal').style.display = 'block';
+    }
+
+    function verifyAdminPassword() {
+        const inputPass = document.getElementById('admin-pass-input').value;
+        const authError = document.getElementById('auth-error');
+
+        if (inputPass === CONFIG.adminPassword) {
+            closeModal('auth-modal');
+            document.getElementById('reg-msg').innerHTML = '';
+            document.getElementById('register-modal').style.display = 'block';
+        } else {
+            authError.innerText = '❌ Incorrect Password! Try again.';
+            authError.style.display = 'block';
+        }
+    }
+
+    function closeModal(id) {
+        document.getElementById(id).style.display = 'none';
+    }
+
+    // Register New Student Logic
+    async function captureAndRegisterStudent() {
+        const id = document.getElementById('reg-id').value.trim();
+        const name = document.getElementById('reg-name').value.trim();
+        const parent = document.getElementById('reg-parent').value.trim();
+        const regMsg = document.getElementById('reg-msg');
+        const video = document.getElementById('video');
+
+        if (!id || !name || !parent) {
+            regMsg.innerHTML = '<span class="error">⚠️ Sabhi fields bharna zaroori hai!</span>';
+            return;
+        }
+
+        regMsg.innerHTML = '<span style="color:blue;">🔍 Chehra scan ho raha hai... Camera ke samne dekhein.</span>';
+
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
+        const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
+
+        if (!detection) {
+            regMsg.innerHTML = '<span class="error">❌ Chehra nahi mila! Kripya camera ke samne sahi se aaiye.</span>';
+            return;
+        }
+
+        const db = getRegisteredStudents();
+        db[id] = {
+            id: id,
+            name: name,
+            parent: parent,
+            descriptor: Array.from(detection.descriptor)
+        };
+
+        saveRegisteredStudents(db);
+        regMsg.innerHTML = `<span class="success">✅ Student ${name} successfully register ho gaye!</span>`;
+
+        setTimeout(() => {
+            closeModal('register-modal');
+            location.reload(); // Restart scanner with updated database
+        }, 1500);
+    }
+
+    // Continuous Face Recognition
+    async function detectAndMatchFaceContinuously() {
+        const video = document.getElementById('video');
+        const statusInfo = document.getElementById('status-info');
+        const registeredDB = getRegisteredStudents();
+        const studentKeys = Object.keys(registeredDB);
+
+        if (studentKeys.length === 0) {
+            statusInfo.innerHTML = '<b class="error">❌ Koi Student Register Nahi Hai! Admin Portal Se Register Karein.</b>';
+            return;
+        }
+
+        const labeledDescriptors = studentKeys.map(key => {
+            const student = registeredDB[key];
+            return new faceapi.LabeledFaceDescriptors(student.id, [new Float32Array(student.descriptor)]);
+        });
+
+        const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+        statusInfo.innerText = '🔍 Camera Ke Samne Aayein, AI Pehchan Kar Raha Hai...';
+
+        faceDetectionInterval = setInterval(async () => {
+            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
+            const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
+
+            if (detection) {
+                const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+
+                if (bestMatch.label !== 'unknown') {
+                    clearInterval(faceDetectionInterval);
+                    activeStudentId = bestMatch.label;
+                    statusInfo.innerHTML = `<b style="color:green;">✅ Chehra Pehchana Gaya: ${registeredDB[activeStudentId].name} (${activeStudentId})</b>`;
+                    verifyInitialLocationAndProcess();
+                } else {
+                    statusInfo.innerHTML = '<b class="error">❌ Unregistered Chehra! Aapka Data System Me Nahi Hai.</b>';
+                }
+            }
+        }, 1000);
+    }
+
+    // Initial Location Check
+    function verifyInitialLocationAndProcess() {
+        const result = document.getElementById('result');
+        if (!navigator.geolocation) {
+            processAttendanceAndSMS();
+            return;
+        }
+
+        result.innerHTML = '<p style="color: blue;">Location check ho rahi hai...</p>';
+
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                const distance = calculateDistance(position.coords.latitude, position.coords.longitude, CONFIG.allowedLat, CONFIG.allowedLng);
+                if (distance <= CONFIG.allowedRadius) {
+                    processAttendanceAndSMS();
+                    startContinuousGeofenceMonitoring();
+                } else {
+                    result.innerHTML = '<p class="error">❌ Access Denied! Allowed Location Ke Bahar Hain.</p>';
+                }
+            },
+            () => {
+                processAttendanceAndSMS();
+                startContinuousGeofenceMonitoring();
+            },
+            { enableHighAccuracy: true, timeout: 5000 }
+        );
+    }
+
+    // Real-Time Background Geofence Tracking
+    function startContinuousGeofenceMonitoring() {
+        if (!navigator.geolocation) return;
+
+        isInsideGeofence = true;
+        const geoStatusElem = document.getElementById('geo-status');
+        geoStatusElem.innerHTML = '<span style="color:green;">📡 Continuous Live Geofence Monitoring Active...</span>';
+
+        watchGeoId = navigator.geolocation.watchPosition(
+            position => {
+                const distance = calculateDistance(position.coords.latitude, position.coords.longitude, CONFIG.allowedLat, CONFIG.allowedLng);
+
+                if (distance > CONFIG.allowedRadius && isInsideGeofence) {
+                    isInsideGeofence = false;
+                    geoStatusElem.innerHTML = '<span class="error">🚨 Geofence Boundary Exit Detected! Sending Auto-SMS...</span>';
+                    triggerAutoExitSMS();
+                } else if (distance <= CONFIG.allowedRadius) {
+                    isInsideGeofence = true;
+                }
+            },
+            err => console.warn('GPS Tracking Error:', err.message),
+            { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+        );
+    }
+
+    // Send Boundary Exit SMS Alert
+    function triggerAutoExitSMS() {
+        const registeredDB = getRegisteredStudents();
+        const student = registeredDB[activeStudentId];
+        if (!student) return;
+
+        const currentTime = new Date().toLocaleTimeString();
+        const today = new Date().toISOString().split('T')[0];
+        const uniqueToken = Math.floor(1000 + Math.random() * 9000);
+
+        const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left the allowed location without face scan at ${currentTime} on ${today}. Code: ${uniqueToken}`;
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
+
+        fetch(url, { method: 'GET' })
+            .then(res => res.json())
+            .then(response => {
+                const geoStatusElem = document.getElementById('geo-status');
+                if (response.return) {
+                    geoStatusElem.innerHTML += '<br><span class="success">✅ Geofence Exit Auto-SMS Sent Successfully!</span>';
+                } else {
+                    geoStatusElem.innerHTML += `<br><span class="error">❌ Auto-SMS Failed: ${response.message}</span>`;
+                }
+            });
+    }
+
+    // Process Attendance Logic
+    function processAttendanceAndSMS() {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('hidden-canvas');
+        const context = canvas.getContext('2d');
+        const result = document.getElementById('result');
+
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if (globalStream) {
+            globalStream.getTracks().forEach(track => track.stop());
+        }
+        document.getElementById('video-container').style.display = 'none';
+
+        const photoDataUrl = canvas.toDataURL('image/jpeg');
+        const photoNumber = `IMG-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const registeredDB = getRegisteredStudents();
+        const student = registeredDB[activeStudentId];
+
+        const now = new Date();
+        const lastTypeKey = `last_type_${activeStudentId}`;
+        const lastTimeKey = `last_time_${activeStudentId}`;
+
+        let lastType = localStorage.getItem(lastTypeKey);
+        let lastTime = parseInt(localStorage.getItem(lastTimeKey)) || 0;
+
+        extraMessageInfo = '';
+
+        if (lastType === 'ENTRY') {
+            activeStatus = 'EXIT';
+            if (lastTime > 0) {
+                extraMessageInfo = ` Total Location Time: ${formatDuration(now.getTime() - lastTime)}`;
+            }
+            localStorage.setItem(lastTypeKey, 'EXIT');
+            localStorage.setItem(lastTimeKey, now.getTime());
+        } else {
+            activeStatus = 'ENTRY';
+            if (lastType === 'AUTO_EXIT' && lastTime > 0) {
+                extraMessageInfo = ` (Pichle Din Location Avadhi: ${formatDuration(now.getTime() - lastTime)})`;
+            }
+            localStorage.setItem(lastTypeKey, 'ENTRY');
+            localStorage.setItem(lastTimeKey, now.getTime());
+        }
+
+        result.innerHTML = `
+            <p class="success">✅ Attendance Marked Successfully (${activeStatus})</p>
+            <img src="${photoDataUrl}" class="preview-img"><br>
+            <p><b>Student:</b> ${student.name} (${activeStudentId})</p>
+            <p id="upload-status" style="color: blue;">Photo upload ho rahi hai aur SMS bheja ja raha hai...</p>
+        `;
+
+        uploadPhotoAndSendSMS(photoDataUrl, student, photoNumber);
+    }
+
+    // Distance Calculation (Haversine Formula)
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371000;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    // Format Duration Helper
+    function formatDuration(ms) {
+        const totalSec = Math.floor(ms / 1000);
+        const h = Math.floor(totalSec / 3600);
+        const m = Math.floor((totalSec % 3600) / 60);
+        const s = totalSec % 60;
+        return `${h > 0 ? h + 'h ' : ''}${m}m ${s}s`;
+    }
+
+    // Upload Image to Cloudinary
+    function uploadPhotoAndSendSMS(photoDataUrl, student, photoNumber) {
+        const formData = new FormData();
+        formData.append('file', photoDataUrl);
+        formData.append('upload_preset', CONFIG.cloudinaryPreset);
+
+        fetch(`https://api.cloudinary.com/v1_1/${CONFIG.cloudinaryCloudName}/image/upload`, { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => sendAttendanceSMS(student, photoNumber, data.secure_url || 'Link unavailable'))
+            .catch(() => sendAttendanceSMS(student, photoNumber, 'Link unavailable'));
+    }
+
+    // Send Attendance SMS via Fast2SMS
+    function sendAttendanceSMS(student, photoNumber, photoLink) {
+        const today = new Date().toISOString().split('T')[0];
+        const currentTime = new Date().toLocaleTimeString();
+        const uniqueToken = Math.floor(1000 + Math.random() * 9000);
+        const messageText = `Attendance Verified. ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${currentTime}, Code: ${uniqueToken}-${today}, Photo: ${photoLink}`;
+
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
+
+        fetch(url, { method: 'GET' })
+            .then(res => res.json())
+            .then(response => {
+                const statusElem = document.getElementById('upload-status');
+                if (statusElem) {
+                    statusElem.innerHTML = response.return
+                        ? '<span class="success">➔ Photo Uploaded & Automatic SMS Sent!</span>'
+                        : `<span class="error">❌ SMS Error: ${response.message}</span>`;
+                }
+            });
+    }
+</script>
+</body>
+</html>
