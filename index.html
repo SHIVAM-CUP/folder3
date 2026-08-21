@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automatic AI Attendance & Geofence System</title>
+    <title>Digital Entry Attendance Management System</title>
 
     <!-- Web App & Manifest Integration -->
     <link rel="manifest" href="manifest.json">
@@ -49,8 +49,8 @@
 <body>
 
 <div class="container">
-    <h2>📷 Automatic AI Attendance & Geofence</h2>
-    <p id="status-info" style="color: blue;">AI Models Load Ho Rahe Hain...</p>
+    <h2>📷 Digital Entry Attendance Management System</h2>
+    <p id="status-info" style="color: blue;">Loading AI Models...</p>
 
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
@@ -77,7 +77,7 @@
 <div id="auth-modal" class="modal">
     <div class="modal-content">
         <h3>🔒 Admin Password Required</h3>
-        <p style="font-size: 13px; color: #666;">New student registration ke liye password enter karein.</p>
+        <p style="font-size: 13px; color: #666;">Please enter the password to register a new student.</p>
         <div class="form-group">
             <label>Admin Password:</label>
             <input type="password" id="admin-pass-input" placeholder="Enter password">
@@ -98,7 +98,7 @@
         </div>
         <div class="form-group">
             <label>Full Name:</label>
-            <input type="text" id="reg-name" placeholder="e.g. Rahul Sharma">
+            <input type="text" id="reg-name" placeholder="e.g. John Doe">
         </div>
         <div class="form-group">
             <label>Parent Mobile No (SMS):</label>
@@ -157,7 +157,7 @@
     ]).then(() => {
         startCamera();
     }).catch(err => {
-        document.getElementById('status-info').innerHTML = `<b class="error">❌ AI Models Load Fail: ${err.message}</b>`;
+        document.getElementById('status-info').innerHTML = `<b class="error">❌ AI Models Load Failed: ${err.message}</b>`;
     });
 
     // Camera Handler
@@ -173,7 +173,7 @@
                 };
             })
             .catch(() => {
-                document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Fail!</b>';
+                document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Failed!</b>';
             });
     }
 
@@ -193,7 +193,7 @@
             document.getElementById('reg-msg').innerHTML = '';
             document.getElementById('register-modal').style.display = 'block';
         } else {
-            authError.innerText = '❌ Incorrect Password! Try again.';
+            authError.innerText = '❌ Incorrect Password! Please try again.';
             authError.style.display = 'block';
         }
     }
@@ -211,17 +211,17 @@
         const video = document.getElementById('video');
 
         if (!id || !name || !parent) {
-            regMsg.innerHTML = '<span class="error">⚠️ Sabhi fields bharna zaroori hai!</span>';
+            regMsg.innerHTML = '<span class="error">⚠️ All fields are mandatory!</span>';
             return;
         }
 
-        regMsg.innerHTML = '<span style="color:blue;">🔍 Chehra scan ho raha hai... Camera ke samne dekhein.</span>';
+        regMsg.innerHTML = '<span style="color:blue;">🔍 Scanning face... Please look at the camera.</span>';
 
         const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
         const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
         if (!detection) {
-            regMsg.innerHTML = '<span class="error">❌ Chehra nahi mila! Kripya camera ke samne sahi se aaiye.</span>';
+            regMsg.innerHTML = '<span class="error">❌ Face not detected! Please align properly in front of the camera.</span>';
             return;
         }
 
@@ -234,7 +234,7 @@
         };
 
         saveRegisteredStudents(db);
-        regMsg.innerHTML = `<span class="success">✅ Student ${name} successfully register ho gaye!</span>`;
+        regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully!</span>`;
 
         setTimeout(() => {
             closeModal('register-modal');
@@ -250,7 +250,7 @@
         const studentKeys = Object.keys(registeredDB);
 
         if (studentKeys.length === 0) {
-            statusInfo.innerHTML = '<b class="error">❌ Koi Student Register Nahi Hai! Admin Portal Se Register Karein.</b>';
+            statusInfo.innerHTML = '<b class="error">❌ No Registered Students Found! Please register via Admin Portal.</b>';
             return;
         }
 
@@ -260,7 +260,7 @@
         });
 
         const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
-        statusInfo.innerText = '🔍 Camera Ke Samne Aayein, AI Pehchan Kar Raha Hai...';
+        statusInfo.innerText = '🔍 Look at the camera, AI is verifying your face...';
 
         faceDetectionInterval = setInterval(async () => {
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
@@ -272,10 +272,10 @@
                 if (bestMatch.label !== 'unknown') {
                     clearInterval(faceDetectionInterval);
                     activeStudentId = bestMatch.label;
-                    statusInfo.innerHTML = `<b style="color:green;">✅ Chehra Pehchana Gaya: ${registeredDB[activeStudentId].name} (${activeStudentId})</b>`;
+                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Recognized: ${registeredDB[activeStudentId].name} (${activeStudentId})</b>`;
                     verifyInitialLocationAndProcess();
                 } else {
-                    statusInfo.innerHTML = '<b class="error">❌ Unregistered Chehra! Aapka Data System Me Nahi Hai.</b>';
+                    statusInfo.innerHTML = '<b class="error">❌ Unregistered Face! User record not found.</b>';
                 }
             }
         }, 1000);
@@ -289,7 +289,7 @@
             return;
         }
 
-        result.innerHTML = '<p style="color: blue;">Location check ho rahi hai...</p>';
+        result.innerHTML = '<p style="color: blue;">Verifying live location...</p>';
 
         navigator.geolocation.getCurrentPosition(
             position => {
@@ -298,7 +298,7 @@
                     processAttendanceAndSMS();
                     startContinuousGeofenceMonitoring();
                 } else {
-                    result.innerHTML = '<p class="error">❌ Access Denied! Allowed Location Ke Bahar Hain.</p>';
+                    result.innerHTML = '<p class="error">❌ Access Denied! You are outside the allowed location perimeter.</p>';
                 }
             },
             () => {
@@ -315,7 +315,7 @@
 
         isInsideGeofence = true;
         const geoStatusElem = document.getElementById('geo-status');
-        geoStatusElem.innerHTML = '<span style="color:green;">📡 Continuous Live Geofence Monitoring Active...</span>';
+        geoStatusElem.innerHTML = '<span style="color:green;">📡 Live Geofence Monitoring Active...</span>';
 
         watchGeoId = navigator.geolocation.watchPosition(
             position => {
@@ -323,7 +323,7 @@
 
                 if (distance > CONFIG.allowedRadius && isInsideGeofence) {
                     isInsideGeofence = false;
-                    geoStatusElem.innerHTML = '<span class="error">🚨 Geofence Boundary Exit Detected! Sending Auto-SMS...</span>';
+                    geoStatusElem.innerHTML = '<span class="error">🚨 Geofence Boundary Exit Detected! Sending Automated SMS...</span>';
                     triggerAutoExitSMS();
                 } else if (distance <= CONFIG.allowedRadius) {
                     isInsideGeofence = true;
@@ -344,7 +344,7 @@
         const today = new Date().toISOString().split('T')[0];
         const uniqueToken = Math.floor(1000 + Math.random() * 9000);
 
-        const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left the allowed location without face scan at ${currentTime} on ${today}. Code: ${uniqueToken}`;
+        const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left the designated area without face scan verification at ${currentTime} on ${today}. Security Code: ${uniqueToken}`;
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
         fetch(url, { method: 'GET' })
@@ -352,9 +352,9 @@
             .then(response => {
                 const geoStatusElem = document.getElementById('geo-status');
                 if (response.return) {
-                    geoStatusElem.innerHTML += '<br><span class="success">✅ Geofence Exit Auto-SMS Sent Successfully!</span>';
+                    geoStatusElem.innerHTML += '<br><span class="success">✅ Geofence Exit Auto-SMS Alert Sent Successfully!</span>';
                 } else {
-                    geoStatusElem.innerHTML += `<br><span class="error">❌ Auto-SMS Failed: ${response.message}</span>`;
+                    geoStatusElem.innerHTML += `<br><span class="error">❌ Auto-SMS Notification Failed: ${response.message}</span>`;
                 }
             });
     }
@@ -393,14 +393,14 @@
         if (lastType === 'ENTRY') {
             activeStatus = 'EXIT';
             if (lastTime > 0) {
-                extraMessageInfo = ` Total Location Time: ${formatDuration(now.getTime() - lastTime)}`;
+                extraMessageInfo = ` Total Duration On Location: ${formatDuration(now.getTime() - lastTime)}`;
             }
             localStorage.setItem(lastTypeKey, 'EXIT');
             localStorage.setItem(lastTimeKey, now.getTime());
         } else {
             activeStatus = 'ENTRY';
             if (lastType === 'AUTO_EXIT' && lastTime > 0) {
-                extraMessageInfo = ` (Pichle Din Location Avadhi: ${formatDuration(now.getTime() - lastTime)})`;
+                extraMessageInfo = ` (Previous Duration: ${formatDuration(now.getTime() - lastTime)})`;
             }
             localStorage.setItem(lastTypeKey, 'ENTRY');
             localStorage.setItem(lastTimeKey, now.getTime());
@@ -412,10 +412,10 @@
         }
 
         result.innerHTML = `
-            <p class="success">✅ Attendance Marked Successfully (${activeStatus})</p>
+            <p class="success">✅ Attendance Recorded Successfully (${activeStatus})</p>
             <img src="${photoDataUrl}" class="preview-img"><br>
-            <p><b>Student:</b> ${student.name} (${activeStudentId})</p>
-            <p id="upload-status" style="color: blue;">Photo upload ho rahi hai aur SMS bheja ja raha hai...</p>
+            <p><b>Student Name:</b> ${student.name} (${activeStudentId})</p>
+            <p id="upload-status" style="color: blue;">Uploading photo and dispatching SMS notification...</p>
         `;
 
         uploadPhotoAndSendSMS(photoDataUrl, student, photoNumber);
@@ -427,7 +427,7 @@
         const historyContainer = document.getElementById('history-result');
 
         if (!inputId) {
-            historyContainer.innerHTML = '<p class="error" style="font-size: 12px; margin-top:8px;">⚠️ Kripya Student ID enter karein!</p>';
+            historyContainer.innerHTML = '<p class="error" style="font-size: 12px; margin-top:8px;">⚠️ Please enter a valid Student ID!</p>';
             return;
         }
 
@@ -435,7 +435,7 @@
         const student = registeredDB[inputId];
 
         if (!student) {
-            historyContainer.innerHTML = '<p class="error" style="font-size: 12px; margin-top:8px;">❌ Ye Student ID registered nahi hai!</p>';
+            historyContainer.innerHTML = '<p class="error" style="font-size: 12px; margin-top:8px;">❌ Student ID is not registered!</p>';
             return;
         }
 
@@ -448,8 +448,8 @@
         if (history.length === 0) {
             historyContainer.innerHTML = `
                 <div style="margin-top:10px; font-size:13px;">
-                    <p><b>Name:</b> ${student.name} (${student.id})</p>
-                    <p style="color: red;">Abhi tak koi Entry record nahi milा hai.</p>
+                    <p><b>Student Name:</b> ${student.name} (${student.id})</p>
+                    <p style="color: red;">No entry logs recorded yet.</p>
                 </div>`;
             return;
         }
@@ -458,9 +458,9 @@
 
         historyContainer.innerHTML = `
             <div style="margin-top:10px; font-size:13px;">
-                <p style="margin:2px 0;"><b>Name:</b> ${student.name}</p>
-                <p style="margin:2px 0; color:#28a745;"><b>Total Present Days:</b> ${totalDaysCount} Din</p>
-                <p style="margin:5px 0 0 0;"><b>Entry Record Dates:</b></p>
+                <p style="margin:2px 0;"><b>Student Name:</b> ${student.name}</p>
+                <p style="margin:2px 0; color:#28a745;"><b>Total Days Present:</b> ${totalDaysCount} Days</p>
+                <p style="margin:5px 0 0 0;"><b>Entry Record Logs:</b></p>
                 <ol class="history-list">
                     ${historyListHTML}
                 </ol>
@@ -504,7 +504,7 @@
         const today = new Date().toISOString().split('T')[0];
         const currentTime = new Date().toLocaleTimeString();
         const uniqueToken = Math.floor(1000 + Math.random() * 9000);
-        const messageText = `Attendance Verified. ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${currentTime}, Code: ${uniqueToken}-${today}, Photo: ${photoLink}`;
+        const messageText = `Attendance Verified. ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${currentTime}, Verification Code: ${uniqueToken}-${today}, Image: ${photoLink}`;
 
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
@@ -514,8 +514,8 @@
                 const statusElem = document.getElementById('upload-status');
                 if (statusElem) {
                     statusElem.innerHTML = response.return
-                        ? '<span class="success">➔ Photo Uploaded & Automatic SMS Sent!</span>'
-                        : `<span class="error">❌ SMS Error: ${response.message}</span>`;
+                        ? '<span class="success">➔ Photo Uploaded & Automatic SMS Alert Sent!</span>'
+                        : `<span class="error">❌ SMS Dispatch Error: ${response.message}</span>`;
                 }
             });
     }
