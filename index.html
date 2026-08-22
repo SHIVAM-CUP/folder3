@@ -22,7 +22,7 @@
         .btn-history { background: #17a2b8; }
 
         .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-        .modal-content { background: white; margin: 10% auto; padding: 20px; border-radius: 10px; width: 90%; max-width: 450px; text-align: left; max-height: 80vh; overflow-y: auto; }
+        .modal-content { background: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; text-align: left; max-height: 85vh; overflow-y: auto; }
         .form-group { margin-bottom: 12px; }
         .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
         .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
@@ -30,7 +30,10 @@
         
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
         th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
-        th { background-color: #f2f2f2; }
+        th { background-color: #007bff; color: white; }
+        
+        .summary-box { background: #e7f3fe; border-left: 5px solid #2196F3; padding: 12px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; text-align: left; }
+        .summary-box p { margin: 4px 0; }
     </style>
 </head>
 <body>
@@ -55,6 +58,10 @@
 <div id="history-modal" class="modal">
     <div class="modal-content">
         <h3>📜 Attendance & Exit Logs History</h3>
+        <!-- Top Summary Box -->
+        <div id="summary-container" class="summary-box">
+            <p><b>Total Unique Days Present:</b> Loading...</p>
+        </div>
         <div id="history-table-container"></div>
         <button class="btn close-btn" onclick="closeModal('history-modal')">Close</button>
     </div>
@@ -124,9 +131,28 @@
         localStorage.setItem('registered_students_db', JSON.stringify(data));
     }
 
-    function addHistoryLog(studentId, name, status, timeStr, dateStr, extraNote = '') {
+    // Dynamic Live Date Helper (YYYY-MM-DD)
+    function getFormattedDate(d = new Date()) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    // Dynamic Day Name Helper (e.g. Monday, Tuesday)
+    function getFormattedDayName(d = new Date()) {
+        const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        return days[d.getDay()];
+    }
+
+    // Dynamic Live Time Helper (HH:MM:SS AM/PM)
+    function getFormattedTime(d = new Date()) {
+        return d.toLocaleTimeString();
+    }
+
+    function addHistoryLog(studentId, name, status, timeStr, dateStr, dayName, extraNote = '') {
         let history = JSON.parse(localStorage.getItem('attendance_history_logs')) || [];
-        history.unshift({ studentId, name, status, timeStr, dateStr, extraNote });
+        history.unshift({ studentId, name, status, timeStr, dateStr, dayName, extraNote, timestamp: new Date().getTime() });
         localStorage.setItem('attendance_history_logs', JSON.stringify(history));
     }
 
@@ -175,16 +201,63 @@
 
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
+    // History Modal Display with Summary Box Analysis
     function showHistoryModal() {
         const history = JSON.parse(localStorage.getItem('attendance_history_logs')) || [];
         let container = document.getElementById('history-table-container');
+        let summaryElem = document.getElementById('summary-container');
+
         if(history.length === 0) {
+            summaryElem.innerHTML = '<p><b>📊 Total Unique Days Present:</b> 0 Days</p>';
             container.innerHTML = '<p>Koi History Records Nahi Hain.</p>';
         } else {
-            let html = `<table><tr><th>ID</th><th>Name</th><th>Status</th><th>Time</th><th>Date</th><th>Note</th></tr>`;
+            const dayMap = {};
+            const uniqueDays = new Set();
+
             history.forEach(log => {
-                html += `<tr><td>${log.studentId}</td><td>${log.name}</td><td><b>${log.status}</b></td><td>${log.timeStr}</td><td>${log.dateStr}</td><td>${log.extraNote}</td></tr>`;
+                if (!dayMap[log.dateStr]) {
+                    dayMap[log.dateStr] = { dayName: log.dayName || 'N/A', entries: [], exits: [] };
+                }
+
+                if (log.status === 'ENTRY') {
+                    uniqueDays.add(log.dateStr);
+                    dayMap[log.dateStr].entries.push(log.timeStr);
+                } else if (log.status === 'EXIT' || log.status === 'AUTO_EXIT') {
+                    dayMap[log.dateStr].exits.push(`${log.timeStr} (${log.status})`);
+                }
             });
+
+            let latestDate = Object.keys(dayMap)[0];
+            let latestEntry = dayMap[latestDate]?.entries[0] || 'N/A';
+            let latestExit = dayMap[latestDate]?.exits[0] || 'N/A';
+            let latestDayName = dayMap[latestDate]?.dayName || 'N/A';
+
+            summaryElem.innerHTML = `
+                <p><b>📊 Total Unique Days Present:</b> <span style="color:green; font-weight:bold;">${uniqueDays.size} Days</span></p>
+                <p><b>📅 Latest Active Date:</b> ${latestDate} (${latestDayName})</p>
+                <p><b>🟢 Latest Entry Time:</b> ${latestEntry}</p>
+                <p><b>🔴 Latest Exit Time:</b> ${latestExit}</p>
+            `;
+
+            let html = `<table>
+                <tr>
+                    <th>Day</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                    <th>Note</th>
+                </tr>`;
+
+            history.forEach(log => {
+                html += `<tr>
+                    <td><b>${log.dayName || 'N/A'}</b></td>
+                    <td>${log.dateStr}</td>
+                    <td style="color:${log.status === 'ENTRY' ? 'green' : 'red'};"><b>${log.status}</b></td>
+                    <td>${log.timeStr}</td>
+                    <td>${log.extraNote}</td>
+                </tr>`;
+            });
+
             html += `</table>`;
             container.innerHTML = html;
         }
@@ -283,7 +356,6 @@
         );
     }
 
-    // UPDATED GEOFENCE MONITORING LOGIC
     function startContinuousGeofenceMonitoring() {
         if (!navigator.geolocation) return;
 
@@ -298,24 +370,25 @@
                 if (distance > CONFIG.allowedRadius && isInsideGeofence) {
                     isInsideGeofence = false;
                     
-                    // Check student current state before triggering Auto-EXIT
                     let currentStatus = localStorage.getItem(`last_type_${activeStudentId}`);
 
-                    // Agar student pehle se EXIT kar chuka hai, toh Auto-EXIT trigger NAHI hoga
                     if (currentStatus === 'EXIT' || currentStatus === 'AUTO_EXIT') {
                         geoStatusElem.innerHTML = '<span style="color:blue;">ℹ️ Student already scanned and EXITED. Geofence alert bypassed.</span>';
                         return;
                     }
 
-                    // Agar bina face-scan (sirf ENTRY state me tha) aur bahar gaya, tabhi alert jayega
                     geoStatusElem.innerHTML = '<span class="error">🚨 Boundary exit detected without face scan! Sending Auto-EXIT SMS...</span>';
                     
                     const now = new Date();
+                    const currentDateStr = getFormattedDate(now);
+                    const currentTimeStr = getFormattedTime(now);
+                    const currentDayName = getFormattedDayName(now);
+
                     localStorage.setItem(`last_type_${activeStudentId}`, 'AUTO_EXIT');
                     localStorage.setItem(`last_time_${activeStudentId}`, now.getTime());
 
                     const registeredDB = getRegisteredStudents();
-                    addHistoryLog(activeStudentId, registeredDB[activeStudentId].name, 'AUTO_EXIT', now.toLocaleTimeString(), now.toISOString().split('T')[0], 'Bina Scan kiye Bahar Gaya');
+                    addHistoryLog(activeStudentId, registeredDB[activeStudentId].name, 'AUTO_EXIT', currentTimeStr, currentDateStr, currentDayName, 'Bina Scan kiye Bahar Gaya');
 
                     triggerAutoExitSMS();
                 } else if (distance <= CONFIG.allowedRadius) {
@@ -332,8 +405,9 @@
         const student = registeredDB[activeStudentId];
         if (!student) return;
 
-        const currentTime = new Date().toLocaleTimeString();
-        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const currentTime = getFormattedTime(now);
+        const today = getFormattedDate(now);
         const uniqueToken = Math.floor(1000 + Math.random() * 9000);
 
         const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT FACE SCAN at ${currentTime} on ${today}. Code: ${uniqueToken}`;
@@ -349,7 +423,6 @@
             });
     }
 
-    // PROCESS ATTENDANCE LOGIC
     function processAttendanceAndSMS() {
         const video = document.getElementById('video');
         const canvas = document.getElementById('hidden-canvas');
@@ -367,7 +440,10 @@
         const student = registeredDB[activeStudentId];
 
         const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+        const todayStr = getFormattedDate(now);
+        const currentTimeStr = getFormattedTime(now);
+        const dayNameStr = getFormattedDayName(now);
+
         const lastTypeKey = `last_type_${activeStudentId}`;
         const lastTimeKey = `last_time_${activeStudentId}`;
         const lastDateKey = `last_date_${activeStudentId}`;
@@ -378,31 +454,26 @@
 
         extraMessageInfo = '';
 
-        // Conditions check:
         if (lastDate && lastDate !== todayStr) {
-            // Naye Din ka Scan -> ENTRY
             activeStatus = 'ENTRY';
             extraMessageInfo = ' (Fresh Day Entry)';
         } else if (lastType === 'ENTRY') {
-            // Agar pehle se ENTRY hai -> To ab EXIT mark hoga
             activeStatus = 'EXIT';
             if (lastTime > 0) {
                 extraMessageInfo = ` Total Time Spent: ${formatDuration(now.getTime() - lastTime)}`;
             }
         } else {
-            // Agar last status EXIT / AUTO_EXIT tha -> To ab ENTRY hoga
             activeStatus = 'ENTRY';
             if (lastType === 'AUTO_EXIT') {
                 extraMessageInfo = ' (Re-Entry After Unscanned Exit)';
             }
         }
 
-        // Save new status
         localStorage.setItem(lastTypeKey, activeStatus);
         localStorage.setItem(lastTimeKey, now.getTime());
         localStorage.setItem(lastDateKey, todayStr);
 
-        addHistoryLog(activeStudentId, student.name, activeStatus, now.toLocaleTimeString(), todayStr, extraMessageInfo);
+        addHistoryLog(activeStudentId, student.name, activeStatus, currentTimeStr, todayStr, dayNameStr, extraMessageInfo);
 
         result.innerHTML = `
             <p class="success">✅ Attendance Marked Successfully (${activeStatus})</p>
@@ -444,8 +515,9 @@
     }
 
     function sendAttendanceSMS(student, photoNumber, photoLink) {
-        const today = new Date().toISOString().split('T')[0];
-        const currentTime = new Date().toLocaleTimeString();
+        const now = new Date();
+        const today = getFormattedDate(now);
+        const currentTime = getFormattedTime(now);
         const uniqueToken = Math.floor(1000 + Math.random() * 9000);
         const messageText = `Attendance Verified. ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${currentTime}, Code: ${uniqueToken}-${today}, Photo: ${photoLink}`;
 
