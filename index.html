@@ -39,7 +39,7 @@
 <body>
 
 <div class="container">
-    <h2>📷 DIGITAL ENTRY ATTENDANC</h2>
+    <h2>📷 DIGITAL ENTRY ATTENDANCE</h2>
     <p id="status-info" style="color: blue;">Loading AI Models...</p>
 
     <div id="video-container">
@@ -320,21 +320,35 @@
             return;
         }
 
-        regMsg.innerHTML = '<span style="color:blue;">🔍 Scanning face... Please wait.</span>';
-        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
-        const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
-
-        if (!detection) {
-            regMsg.innerHTML = '<span class="error">❌ No face detected! Please position yourself clearly in front of the camera.</span>';
+        if (!video || video.paused || video.ended || !video.srcObject) {
+            regMsg.innerHTML = '<span class="error">❌ Camera is not active! Please refresh and grant camera permission.</span>';
             return;
         }
 
-        const db = getRegisteredStudents();
-        db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor) };
-        saveRegisteredStudents(db);
-        regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully!</span>`;
+        regMsg.innerHTML = '<span style="color:blue;">🔍 Scanning face... Please look at the camera.</span>';
+        
+        try {
+            // Updated detector options for better detection during registration
+            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
+            const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
-        setTimeout(() => { closeModal('register-modal'); location.reload(); }, 1500);
+            if (!detection) {
+                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly in front of the camera and try again.</span>';
+                return;
+            }
+
+            const db = getRegisteredStudents();
+            db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor) };
+            saveRegisteredStudents(db);
+            regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully! Reloading...</span>`;
+
+            setTimeout(() => { 
+                closeModal('register-modal'); 
+                location.reload(); 
+            }, 1500);
+        } catch (err) {
+            regMsg.innerHTML = `<span class="error">❌ Registration Error: ${err.message}</span>`;
+        }
     }
 
     async function detectAndMatchFaceContinuously() {
@@ -357,6 +371,8 @@
         statusInfo.innerText = '🔍 Look at the camera, AI is recognizing your face...';
 
         faceDetectionInterval = setInterval(async () => {
+            if (video.paused || video.ended) return;
+
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
