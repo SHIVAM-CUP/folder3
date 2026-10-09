@@ -9,7 +9,7 @@
         * { box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; margin: 0; }
         .container { background: white; max-width: 500px; margin: auto; padding: 25px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
-        #video-container { position: relative; width: 100%; max-width: 400px; margin: 15px auto; }
+        #video-container { position: relative; width: 100%; max-width: 400px; margin: 15px auto; display: none; }
         video { width: 100%; border-radius: 10px; background: #000; transform: scaleX(-1); }
         .status-msg { font-weight: bold; margin-top: 10px; }
         .success { color: green; font-weight: bold; margin-top: 15px; }
@@ -20,6 +20,7 @@
         .btn:hover { background: #0056b3; }
         .btn-admin { background: #28a745; }
         .btn-history { background: #17a2b8; }
+        .btn-scan { background: #ff9800; }
 
         .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
         .modal-content { background: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; text-align: left; max-height: 85vh; overflow-y: auto; }
@@ -42,12 +43,16 @@
     <h2>📷 DIGITAL ENTRY ATTENDANCE</h2>
     <p id="status-info" style="color: blue;">Loading AI Models...</p>
 
+    <!-- Video element hidden by default -->
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
     </div>
 
-    <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register Student</button>
-    <button class="btn btn-history" onclick="openStudentAuthForHistory()">📜 View History Logs</button>
+    <div>
+        <button class="btn btn-scan" onclick="startFaceAttendance()">🔍 Start Face Verification</button>
+        <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register Student</button>
+        <button class="btn btn-history" onclick="openStudentAuthForHistory()">📜 View History Logs</button>
+    </div>
 
     <canvas id="hidden-canvas" width="400" height="300" style="display:none;"></canvas>
     <div id="result"></div>
@@ -112,7 +117,7 @@
         </div>
         <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
         <button class="btn btn-admin" onclick="captureAndRegisterStudent()">Scan Face & Register</button>
-        <button class="btn close-btn" onclick="closeModal('register-modal')">Close</button>
+        <button class="btn close-btn" onclick="closeRegistrationModal()">Close</button>
     </div>
 </div>
 
@@ -135,6 +140,7 @@
     let faceDetectionInterval = null;
     let watchGeoId = null;
     let isInsideGeofence = true;
+    let modelsLoaded = false;
 
     function getRegisteredStudents() {
         return JSON.parse(localStorage.getItem('registered_students_db')) || {};
@@ -166,32 +172,63 @@
         localStorage.setItem('attendance_history_logs', JSON.stringify(history));
     }
 
+    // AI models load on startup, but camera does NOT auto-start
     Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(CONFIG.modelUrl),
         faceapi.nets.faceLandmark68Net.loadFromUri(CONFIG.modelUrl),
         faceapi.nets.faceRecognitionNet.loadFromUri(CONFIG.modelUrl)
-    ]).then(() => startCamera())
+    ]).then(() => {
+        modelsLoaded = true;
+        document.getElementById('status-info').innerHTML = '<b style="color:green;">✅ AI Models Loaded! Ready for verification.</b>';
+    })
     .catch(err => {
         document.getElementById('status-info').innerHTML = `<b class="error">❌ AI Models Loading Failed: ${err.message}</b>`;
     });
 
-    function startCamera() {
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+    // Helper to start camera stream
+    function openCameraStream() {
+        return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
             .then(stream => {
                 globalStream = stream;
                 const video = document.getElementById('video');
                 video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    detectAndMatchFaceContinuously();
-                };
-            })
+                document.getElementById('video-container').style.display = 'block';
+                return new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
+                });
+            });
+    }
+
+    // Helper to stop camera stream
+    function stopCameraStream() {
+        if (globalStream) {
+            globalStream.getTracks().forEach(track => track.stop());
+            globalStream = null;
+        }
+        if (faceDetectionInterval) {
+            clearInterval(faceDetectionInterval);
+            faceDetectionInterval = null;
+        }
+        document.getElementById('video-container').style.display = 'none';
+    }
+
+    function startFaceAttendance() {
+        if (!modelsLoaded) {
+            alert('AI Models are still loading. Please wait!');
+            return;
+        }
+        openCameraStream()
+            .then(() => detectAndMatchFaceContinuously())
             .catch(() => {
                 document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Denied!</b>';
             });
     }
 
     function openAdminAuth() {
+        stopCameraStream();
         document.getElementById('admin-pass-input').value = '';
         document.getElementById('auth-error').style.display = 'none';
         document.getElementById('auth-modal').style.display = 'block';
@@ -209,16 +246,22 @@
         }
     }
 
-    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    function closeModal(id) { 
+        document.getElementById(id).style.display = 'none'; 
+    }
 
-    // Prompts student for ID before displaying history
+    function closeRegistrationModal() {
+        stopCameraStream();
+        closeModal('register-modal');
+    }
+
     function openStudentAuthForHistory() {
+        stopCameraStream();
         document.getElementById('student-id-input').value = '';
         document.getElementById('student-auth-error').style.display = 'none';
         document.getElementById('student-auth-modal').style.display = 'block';
     }
 
-    // Verifies Student ID and opens filtered history
     function verifyStudentAndShowHistory() {
         const studentId = document.getElementById('student-id-input').value.trim();
         const errorElem = document.getElementById('student-auth-error');
@@ -320,19 +363,17 @@
             return;
         }
 
-        if (!video || video.paused || video.ended || !video.srcObject) {
-            regMsg.innerHTML = '<span class="error">❌ Camera is not active! Please refresh and grant camera permission.</span>';
-            return;
-        }
-
-        regMsg.innerHTML = '<span style="color:blue;">🔍 Scanning face... Please look at the camera.</span>';
+        regMsg.innerHTML = '<span style="color:blue;">🎥 Turning on camera and scanning face... Please look at the camera.</span>';
         
         try {
-            // Updated detector options for better detection during registration
+            // Camera only starts HERE when button is clicked
+            await openCameraStream();
+
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
             if (!detection) {
+                stopCameraStream();
                 regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly in front of the camera and try again.</span>';
                 return;
             }
@@ -340,13 +381,16 @@
             const db = getRegisteredStudents();
             db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor) };
             saveRegisteredStudents(db);
-            regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully! Reloading...</span>`;
+            
+            // Turn off camera immediately after capture
+            stopCameraStream();
+            regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully!</span>`;
 
             setTimeout(() => { 
-                closeModal('register-modal'); 
-                location.reload(); 
+                closeRegistrationModal(); 
             }, 1500);
         } catch (err) {
+            stopCameraStream();
             regMsg.innerHTML = `<span class="error">❌ Registration Error: ${err.message}</span>`;
         }
     }
@@ -358,6 +402,7 @@
         const studentKeys = Object.keys(registeredDB);
 
         if (studentKeys.length === 0) {
+            stopCameraStream();
             statusInfo.innerHTML = '<b class="error">❌ No registered students found! Please register using the Admin panel.</b>';
             return;
         }
@@ -371,7 +416,7 @@
         statusInfo.innerText = '🔍 Look at the camera, AI is recognizing your face...';
 
         faceDetectionInterval = setInterval(async () => {
-            if (video.paused || video.ended) return;
+            if (!video.srcObject || video.paused || video.ended) return;
 
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
@@ -405,6 +450,7 @@
                     processAttendanceAndSMS();
                     startContinuousGeofenceMonitoring();
                 } else {
+                    stopCameraStream();
                     result.innerHTML = '<p class="error">❌ Access Denied! You are currently outside the designated location radius.</p>';
                 }
             },
@@ -491,8 +537,7 @@
 
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        if (globalStream) { globalStream.getTracks().forEach(track => track.stop()); }
-        document.getElementById('video-container').style.display = 'none';
+        stopCameraStream();
 
         const photoDataUrl = canvas.toDataURL('image/jpeg');
         const photoNumber = `IMG-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
