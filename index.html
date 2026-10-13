@@ -38,7 +38,6 @@
         .summary-box { background: #e7f3fe; border-left: 5px solid #2196F3; padding: 12px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; text-align: left; }
         .summary-box p { margin: 4px 0; }
 
-        /* ID Card Style - Clean and Professional */
         .id-card { border: 2px solid #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 280px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .id-card h3 { margin: 0 0 10px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         .id-card img { width: 85px; height: 85px; border-radius: 50%; object-fit: cover; border: 2px solid #007bff; margin-bottom: 8px; }
@@ -53,7 +52,6 @@
     <h2>📷 DIGITAL ENTRY ATTENDANCE</h2>
     <p id="status-info" style="color: blue;">Loading AI Models...</p>
 
-    <!-- Video element hidden by default -->
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
     </div>
@@ -70,7 +68,6 @@
     <div id="geo-status" class="status-msg" style="color: #555;"></div>
 </div>
 
-<!-- QR Code Scanner Modal -->
 <div id="qr-modal" class="modal">
     <div class="modal-content" style="text-align: center;">
         <h3>📱 QR Code Attendance Scanner</h3>
@@ -84,7 +81,6 @@
     </div>
 </div>
 
-<!-- Student Verification Modal for History -->
 <div id="student-auth-modal" class="modal">
     <div class="modal-content">
         <h3>🆔 Student Verification Required</h3>
@@ -98,7 +94,6 @@
     </div>
 </div>
 
-<!-- History Log Modal -->
 <div id="history-modal" class="modal">
     <div class="modal-content">
         <h3 id="history-title">📜 Attendance & Exit Logs History</h3>
@@ -110,7 +105,6 @@
     </div>
 </div>
 
-<!-- Admin Password Modal -->
 <div id="auth-modal" class="modal">
     <div class="modal-content">
         <h3>🔒 Admin Password Required</h3>
@@ -124,7 +118,6 @@
     </div>
 </div>
 
-<!-- Registration Modal -->
 <div id="register-modal" class="modal">
     <div class="modal-content">
         <h3>📝 Student Registration & ID Card</h3>
@@ -143,7 +136,6 @@
         <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
         <button class="btn btn-admin" onclick="captureAndRegisterStudent()">Scan Face & Generate ID Card</button>
         
-        <!-- Generated ID Card Preview (With Name, ID, Photo and Larger QR) -->
         <div id="id-card-output" style="display:none; text-align: center;">
             <div class="id-card" id="printable-card">
                 <h3>SCHOOL ID CARD</h3>
@@ -152,7 +144,7 @@
                 <p><b>ID:</b> <span id="card-id"></span></p>
                 <div id="qrcode-container"></div>
             </div>
-            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully! You can take a screenshot or print it.</p>
+            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully!</p>
         </div>
 
         <button class="btn close-btn" onclick="closeRegistrationModal()">Close</button>
@@ -280,7 +272,6 @@
         document.getElementById('qr-modal').style.display = 'block';
     }
 
-    // QR Code Attendance Processing (uses static registered card photo)
     function processQrAttendance() {
         const studentId = document.getElementById('qr-scan-input').value.trim();
         const registeredDB = getRegisteredStudents();
@@ -394,7 +385,6 @@
             document.getElementById('card-name').innerText = name;
             document.getElementById('card-id').innerText = id;
             
-            // Generate Larger QR Code (Size 130x130 for easy scanning)
             document.getElementById('qrcode-container').innerHTML = '';
             new QRCode(document.getElementById('qrcode-container'), {
                 text: id,
@@ -531,7 +521,9 @@
 
         const now = new Date();
         const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
+        
+        // Fast2SMS URL updated with route=q and correct parameters
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
         fetch(url, { method: 'GET' })
             .then(res => res.json())
@@ -623,7 +615,9 @@
     function sendAttendanceSMS(student, photoLink, scanMode) {
         const now = new Date();
         const messageText = `Attendance (${scanMode}): ID ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${getFormattedTime(now)}, Photo: ${photoLink}`;
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
+        
+        // Fast2SMS URL updated with route=q and correct parameters to avoid promotional texts / errors
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
         fetch(url, { method: 'GET' })
             .then(res => res.json())
