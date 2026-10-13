@@ -6,6 +6,8 @@
     <title>DIGITAL ENTRY ATTENDANCE</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Include html5-qrcode library for live camera QR scanning -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; margin: 0; }
@@ -68,16 +70,14 @@
     <div id="geo-status" class="status-msg" style="color: #555;"></div>
 </div>
 
+<!-- QR Code Live Scanner Modal -->
 <div id="qr-modal" class="modal">
     <div class="modal-content" style="text-align: center;">
-        <h3>📱 QR Code Attendance Scanner</h3>
-        <p>Scan QR or enter Student ID manually:</p>
-        <div class="form-group">
-            <label>Student ID:</label>
-            <input type="text" id="qr-scan-input" placeholder="e.g. STU101">
-        </div>
-        <button class="btn btn-qr" onclick="processQrAttendance()">Submit QR Attendance</button>
-        <button class="btn close-btn" onclick="closeModal('qr-modal')">Close</button>
+        <h3>📱 QR Code Live Scanner</h3>
+        <p>Please show the Student ID QR Code in front of the camera:</p>
+        <div id="reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
+        <p id="qr-scan-msg" class="status-msg"></p>
+        <button class="btn close-btn" onclick="closeQrScannerModal()">Close Scanner</button>
     </div>
 </div>
 
@@ -171,6 +171,7 @@
     let watchGeoId = null;
     let isInsideGeofence = true;
     let modelsLoaded = false;
+    let html5QrCodeScanner = null;
 
     function getRegisteredStudents() {
         return JSON.parse(localStorage.getItem('registered_students_db')) || {};
@@ -265,25 +266,51 @@
     }
 
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-    function closeRegistrationModal() { stopCameraStream(); closeModal('register-modal'); }
-
-    function openQrScannerModal() {
-        document.getElementById('qr-scan-input').value = '';
-        document.getElementById('qr-modal').style.display = 'block';
+    
+    function closeRegistrationModal() { 
+        stopCameraStream(); 
+        closeModal('register-modal'); 
     }
 
-    function processQrAttendance() {
-        const studentId = document.getElementById('qr-scan-input').value.trim();
+    // Open Live QR Code Scanner Camera
+    function openQrScannerModal() {
+        stopCameraStream();
+        document.getElementById('qr-scan-msg').innerHTML = '';
+        document.getElementById('qr-modal').style.display = 'block';
+
+        if (!html5QrCodeScanner) {
+            html5QrCodeScanner = new Html5QrcodeScanner(
+                "reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false
+            );
+        }
+        
+        html5QrCodeScanner.render(onQrScanSuccess, onQrScanError);
+    }
+
+    function closeQrScannerModal() {
+        if (html5QrCodeScanner) {
+            html5QrCodeScanner.clear().catch(error => console.error("Failed to clear QR scanner.", error));
+        }
+        closeModal('qr-modal');
+    }
+
+    function onQrScanSuccess(decodedText) {
+        const studentId = decodedText.trim();
         const registeredDB = getRegisteredStudents();
 
-        if (!studentId || !registeredDB[studentId]) {
-            alert('❌ Invalid or Unregistered Student ID from QR Code!');
+        if (!registeredDB[studentId]) {
+            document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Unregistered Student ID: ${studentId}</span>`;
             return;
         }
 
+        // Stop scanner and process attendance
+        closeQrScannerModal();
         activeStudentId = studentId;
-        closeModal('qr-modal');
         verifyInitialLocationAndProcess(registeredDB[studentId], registeredDB[studentId].photoUrl || 'QR-Scan-Mode', 'QR-Scan');
+    }
+
+    function onQrScanError(errorMessage) {
+        // Suppress continuous minor scanning warnings
     }
 
     function openStudentAuthForHistory() {
@@ -522,7 +549,6 @@
         const now = new Date();
         const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
         
-        // Fast2SMS URL updated with route=q and correct parameters
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
         fetch(url, { method: 'GET' })
@@ -531,7 +557,13 @@
                 const geoStatusElem = document.getElementById('geo-status');
                 if (response.return) {
                     geoStatusElem.innerHTML += '<br><span class="success">✅ Geofence Exit Auto-SMS Sent!</span>';
+                } else {
+                    geoStatusElem.innerHTML += `<br><span class="error">❌ SMS Error: ${response.message || 'Unknown error'}</span>`;
                 }
+            })
+            .catch(err => {
+                const geoStatusElem = document.getElementById('geo-status');
+                geoStatusElem.innerHTML += `<br><span class="error">❌ SMS Network Error: ${err.message}</span>`;
             });
     }
 
@@ -616,7 +648,6 @@
         const now = new Date();
         const messageText = `Attendance (${scanMode}): ID ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${getFormattedTime(now)}, Photo: ${photoLink}`;
         
-        // Fast2SMS URL updated with route=q and correct parameters to avoid promotional texts / errors
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
         fetch(url, { method: 'GET' })
@@ -624,9 +655,18 @@
             .then(response => {
                 const statusElem = document.getElementById('upload-status');
                 if (statusElem) {
-                    statusElem.innerHTML = response.return 
-                        ? '<span class="success">➔ Attendance Saved & SMS Sent Successfully!</span>' 
-                        : `<span class="error">❌ SMS Error</span>`;
+                    if (response.return) {
+                        statusElem.innerHTML = '<span class="success">➔ Attendance Saved & SMS Sent Successfully!</span>';
+                    } else {
+                        // Display the exact error reason from Fast2SMS instead of generic text
+                        statusElem.innerHTML = `<span class="error">❌ SMS Failed: ${response.message || 'Unknown reason'}</span>`;
+                    }
+                }
+            })
+            .catch(err => {
+                const statusElem = document.getElementById('upload-status');
+                if (statusElem) {
+                    statusElem.innerHTML = `<span class="error">❌ SMS Network Error: ${err.message}</span>`;
                 }
             });
     }
