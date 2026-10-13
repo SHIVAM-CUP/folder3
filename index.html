@@ -38,12 +38,13 @@
         .summary-box { background: #e7f3fe; border-left: 5px solid #2196F3; padding: 12px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; text-align: left; }
         .summary-box p { margin: 4px 0; }
 
-        /* ID Card Style */
-        .id-card { border: 2px dashed #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 260px; margin-left: auto; margin-right: auto; }
-        .id-card img { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #007bff; }
-        .id-card h4 { margin: 5px 0; color: #333; }
-        .id-card p { margin: 3px 0; font-size: 12px; color: #666; }
-        #qrcode-container { margin-top: 10px; display: inline-block; }
+        /* ID Card Style - Clean and Professional */
+        .id-card { border: 2px solid #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 280px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .id-card h3 { margin: 0 0 10px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .id-card img { width: 85px; height: 85px; border-radius: 50%; object-fit: cover; border: 2px solid #007bff; margin-bottom: 8px; }
+        .id-card h4 { margin: 5px 0; color: #333; font-size: 15px; }
+        .id-card p { margin: 3px 0; font-size: 13px; color: #555; }
+        #qrcode-container { margin-top: 10px; display: inline-block; background: #fff; padding: 5px; border: 1px solid #ddd; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -73,7 +74,7 @@
 <div id="qr-modal" class="modal">
     <div class="modal-content" style="text-align: center;">
         <h3>📱 QR Code Attendance Scanner</h3>
-        <p>Enter Student ID encoded in QR:</p>
+        <p>Scan QR or enter Student ID manually:</p>
         <div class="form-group">
             <label>Student ID:</label>
             <input type="text" id="qr-scan-input" placeholder="e.g. STU101">
@@ -142,15 +143,16 @@
         <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
         <button class="btn btn-admin" onclick="captureAndRegisterStudent()">Scan Face & Generate ID Card</button>
         
-        <!-- Generated ID Card Preview -->
-        <div id="id-card-output" style="display:none;">
+        <!-- Generated ID Card Preview (With Name, ID, Photo and Larger QR) -->
+        <div id="id-card-output" style="display:none; text-align: center;">
             <div class="id-card" id="printable-card">
+                <h3>SCHOOL ID CARD</h3>
                 <img id="card-img" src="" alt="Student Photo">
                 <h4 id="card-name"></h4>
-                <p>ID: <span id="card-id"></span></p>
+                <p><b>ID:</b> <span id="card-id"></span></p>
                 <div id="qrcode-container"></div>
             </div>
-            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card with QR Code generated successfully!</p>
+            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully! You can take a screenshot or print it.</p>
         </div>
 
         <button class="btn close-btn" onclick="closeRegistrationModal()">Close</button>
@@ -392,11 +394,12 @@
             document.getElementById('card-name').innerText = name;
             document.getElementById('card-id').innerText = id;
             
+            // Generate Larger QR Code (Size 130x130 for easy scanning)
             document.getElementById('qrcode-container').innerHTML = '';
-            new QRCode(document.getElementById('qrcode-container', {
+            new QRCode(document.getElementById('qrcode-container'), {
                 text: id,
-                width: 100,
-                height: 100
+                width: 130,
+                height: 130
             });
 
             document.getElementById('id-card-output').style.display = 'block';
@@ -445,14 +448,12 @@
                     activeStudentId = bestMatch.label;
                     statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name}</b>`;
                     
-                    // Verify location before recording face attendance
                     verifyInitialLocationAndProcess(registeredDB[activeStudentId], livePhotoUrl, 'Face-Scan');
                 }
             }
         }, 1000);
     }
 
-    // Geofence & Location Checking Function (Restored)
     function verifyInitialLocationAndProcess(student, finalPhotoLink, scanMode) {
         const result = document.getElementById('result');
         if (!navigator.geolocation) {
@@ -480,7 +481,6 @@
         );
     }
 
-    // Continuous Geofence Monitoring & Auto-Exit (Restored)
     function startContinuousGeofenceMonitoring() {
         if (!navigator.geolocation) return;
 
@@ -512,7 +512,7 @@
                     localStorage.setItem(`last_time_${activeStudentId}`, now.getTime());
 
                     const registeredDB = getRegisteredStudents();
-                    addHistoryLog(activeStudentId, registeredDB[activeStudentId].name, 'AUTO_EXIT', currentTimeStr, currentDateStr, currentDayName, 'Exited Boundary Without Face Scan');
+                    addHistoryLog(activeStudentId, registeredDB[activeStudentId].name, 'AUTO_EXIT', currentTimeStr, currentDateStr, currentDayName, 'Exited Boundary Without Scan');
 
                     triggerAutoExitSMS();
                 } else if (distance <= CONFIG.allowedRadius) {
@@ -544,9 +544,6 @@
     }
 
     function uploadPhotoAndProcessAttendance(student, photoSource, scanMode) {
-        const result = document.getElementById('result');
-        
-        // If it's a live photo URL (base64 from face scan), upload to Cloudinary first
         if (scanMode === 'Face-Scan' && photoSource.startsWith('data:image')) {
             const formData = new FormData();
             formData.append('file', photoSource);
@@ -557,7 +554,6 @@
                 .then(data => finalizeAttendanceRecord(student, data.secure_url || photoSource, scanMode))
                 .catch(() => finalizeAttendanceRecord(student, student.photoUrl, scanMode));
         } else {
-            // For QR scan, directly use the static card photo URL
             finalizeAttendanceRecord(student, photoSource, scanMode);
         }
     }
