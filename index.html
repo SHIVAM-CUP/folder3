@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DIGITAL ENTRY ATTENDANCE</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; margin: 0; }
@@ -21,6 +22,7 @@
         .btn-admin { background: #28a745; }
         .btn-history { background: #17a2b8; }
         .btn-scan { background: #ff9800; }
+        .btn-qr { background: #673ab7; }
 
         .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
         .modal-content { background: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; text-align: left; max-height: 85vh; overflow-y: auto; }
@@ -35,6 +37,13 @@
         
         .summary-box { background: #e7f3fe; border-left: 5px solid #2196F3; padding: 12px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; text-align: left; }
         .summary-box p { margin: 4px 0; }
+
+        /* ID Card Style */
+        .id-card { border: 2px dashed #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 260px; margin-left: auto; margin-right: auto; }
+        .id-card img { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 2px solid #007bff; }
+        .id-card h4 { margin: 5px 0; color: #333; }
+        .id-card p { margin: 3px 0; font-size: 12px; color: #666; }
+        #qrcode-container { margin-top: 10px; display: inline-block; }
     </style>
 </head>
 <body>
@@ -50,6 +59,7 @@
 
     <div>
         <button class="btn btn-scan" onclick="startFaceAttendance()">🔍 Start Face Verification</button>
+        <button class="btn btn-qr" onclick="openQrScannerModal()">📱 Scan QR Code Attendance</button>
         <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register Student</button>
         <button class="btn btn-history" onclick="openStudentAuthForHistory()">📜 View History Logs</button>
     </div>
@@ -57,6 +67,20 @@
     <canvas id="hidden-canvas" width="400" height="300" style="display:none;"></canvas>
     <div id="result"></div>
     <div id="geo-status" class="status-msg" style="color: #555;"></div>
+</div>
+
+<!-- QR Code Scanner Modal (Simulated / Camera Scanner) -->
+<div id="qr-modal" class="modal">
+    <div class="modal-content" style="text-align: center;">
+        <h3>📱 QR Code Attendance Scanner</h3>
+        <p>Enter Student ID encoded in QR or simulate scan:</p>
+        <div class="form-group">
+            <label>Student ID:</label>
+            <input type="text" id="qr-scan-input" placeholder="e.g. STU101">
+        </div>
+        <button class="btn btn-qr" onclick="processQrAttendance()">Submit QR Attendance</button>
+        <button class="btn close-btn" onclick="closeModal('qr-modal')">Close</button>
+    </div>
 </div>
 
 <!-- Student Verification Modal for History -->
@@ -102,7 +126,7 @@
 <!-- Registration Modal -->
 <div id="register-modal" class="modal">
     <div class="modal-content">
-        <h3>📝 Student Registration</h3>
+        <h3>📝 Student Registration & ID Card</h3>
         <div class="form-group">
             <label>Student ID:</label>
             <input type="text" id="reg-id" placeholder="e.g. STU101">
@@ -116,7 +140,19 @@
             <input type="text" id="reg-parent" placeholder="e.g. 919876543210">
         </div>
         <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
-        <button class="btn btn-admin" onclick="captureAndRegisterStudent()">Scan Face & Register</button>
+        <button class="btn btn-admin" id="reg-btn" onclick="captureAndRegisterStudent()">Scan Face & Generate ID Card</button>
+        
+        <!-- Generated ID Card Preview -->
+        <div id="id-card-output" style="display:none;">
+            <div class="id-card" id="printable-card">
+                <img id="card-img" src="" alt="Student Photo">
+                <h4 id="card-name"></h4>
+                <p>ID: <span id="card-id"></span></p>
+                <div id="qrcode-container"></div>
+            </div>
+            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card with QR Code generated successfully!</p>
+        </div>
+
         <button class="btn close-btn" onclick="closeRegistrationModal()">Close</button>
     </div>
 </div>
@@ -138,8 +174,6 @@
     let activeStatus = '';
     let extraMessageInfo = '';
     let faceDetectionInterval = null;
-    let watchGeoId = null;
-    let isInsideGeofence = true;
     let modelsLoaded = false;
 
     function getRegisteredStudents() {
@@ -172,7 +206,6 @@
         localStorage.setItem('attendance_history_logs', JSON.stringify(history));
     }
 
-    // AI models load on startup, but camera does NOT auto-start
     Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(CONFIG.modelUrl),
         faceapi.nets.faceLandmark68Net.loadFromUri(CONFIG.modelUrl),
@@ -180,12 +213,10 @@
     ]).then(() => {
         modelsLoaded = true;
         document.getElementById('status-info').innerHTML = '<b style="color:green;">✅ AI Models Loaded! Ready for verification.</b>';
-    })
-    .catch(err => {
+    }).catch(err => {
         document.getElementById('status-info').innerHTML = `<b class="error">❌ AI Models Loading Failed: ${err.message}</b>`;
     });
 
-    // Helper to start camera stream
     function openCameraStream() {
         return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
             .then(stream => {
@@ -194,15 +225,11 @@
                 video.srcObject = stream;
                 document.getElementById('video-container').style.display = 'block';
                 return new Promise(resolve => {
-                    video.onloadedmetadata = () => {
-                        video.play();
-                        resolve();
-                    };
+                    video.onloadedmetadata = () => { video.play(); resolve(); };
                 });
             });
     }
 
-    // Helper to stop camera stream
     function stopCameraStream() {
         if (globalStream) {
             globalStream.getTracks().forEach(track => track.stop());
@@ -216,15 +243,10 @@
     }
 
     function startFaceAttendance() {
-        if (!modelsLoaded) {
-            alert('AI Models are still loading. Please wait!');
-            return;
-        }
+        if (!modelsLoaded) { alert('AI Models are still loading. Please wait!'); return; }
         openCameraStream()
             .then(() => detectAndMatchFaceContinuously())
-            .catch(() => {
-                document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Denied!</b>';
-            });
+            .catch(() => { document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Denied!</b>'; });
     }
 
     function openAdminAuth() {
@@ -235,10 +257,10 @@
     }
 
     function verifyAdminPassword() {
-        const inputPass = document.getElementById('admin-pass-input').value;
-        if (inputPass === CONFIG.adminPassword) {
+        if (document.getElementById('admin-pass-input').value === CONFIG.adminPassword) {
             closeModal('auth-modal');
             document.getElementById('reg-msg').innerHTML = '';
+            document.getElementById('id-card-output').style.display = 'none';
             document.getElementById('register-modal').style.display = 'block';
         } else {
             document.getElementById('auth-error').innerText = '❌ Incorrect Password!';
@@ -246,13 +268,29 @@
         }
     }
 
-    function closeModal(id) { 
-        document.getElementById(id).style.display = 'none'; 
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    function closeRegistrationModal() { stopCameraStream(); closeModal('register-modal'); }
+
+    function openQrScannerModal() {
+        document.getElementById('qr-scan-input').value = '';
+        document.getElementById('qr-modal').style.display = 'block';
     }
 
-    function closeRegistrationModal() {
-        stopCameraStream();
-        closeModal('register-modal');
+    // QR Code Attendance Processing
+    function processQrAttendance() {
+        const studentId = document.getElementById('qr-scan-input').value.trim();
+        const registeredDB = getRegisteredStudents();
+
+        if (!studentId || !registeredDB[studentId]) {
+            alert('❌ Invalid or Unregistered Student ID from QR Code!');
+            return;
+        }
+
+        activeStudentId = studentId;
+        closeModal('qr-modal');
+        
+        // QR Code کے ذریعے حاضری پروسیس کریں (اس میں آئی ڈی کارڈ والی اسٹیٹک فوٹو جائے گی)
+        handleAttendanceRecord(registeredDB[studentId], registeredDB[studentId].photoUrl || 'QR-Scan-Mode', 'QR-Scan');
     }
 
     function openStudentAuthForHistory() {
@@ -267,18 +305,11 @@
         const errorElem = document.getElementById('student-auth-error');
         const registeredDB = getRegisteredStudents();
 
-        if (!studentId) {
-            errorElem.innerText = '⚠️ Please enter a valid Student ID!';
-            errorElem.style.display = 'block';
-            return;
-        }
-
-        if (!registeredDB[studentId]) {
+        if (!studentId || !registeredDB[studentId]) {
             errorElem.innerText = '❌ Student ID not found in the system!';
             errorElem.style.display = 'block';
             return;
         }
-
         closeModal('student-auth-modal');
         showHistoryModal(studentId);
     }
@@ -290,67 +321,28 @@
         const studentName = registeredDB[studentId]?.name || studentId;
 
         document.getElementById('history-title').innerText = `📜 Attendance History: ${studentName} (${studentId})`;
-
         let container = document.getElementById('history-table-container');
         let summaryElem = document.getElementById('summary-container');
 
         if(history.length === 0) {
             summaryElem.innerHTML = '<p><b>📊 Total Unique Days Present:</b> 0 Days</p>';
-            container.innerHTML = '<p>No attendance history records found for this student.</p>';
+            container.innerHTML = '<p>No attendance history records found.</p>';
         } else {
-            const dayMap = {};
             const uniqueDays = new Set();
+            history.forEach(log => { if (log.status === 'ENTRY') uniqueDays.add(log.dateStr); });
 
+            summaryElem.innerHTML = `<p><b>📊 Total Unique Days Present:</b> <span style="color:green; font-weight:bold;">${uniqueDays.size} Days</span></p>`;
+            let html = `<table><tr><th>Day</th><th>Date</th><th>Status</th><th>Time</th><th>Note</th></tr>`;
             history.forEach(log => {
-                if (!dayMap[log.dateStr]) {
-                    dayMap[log.dateStr] = { dayName: log.dayName || 'N/A', entries: [], exits: [] };
-                }
-
-                if (log.status === 'ENTRY') {
-                    uniqueDays.add(log.dateStr);
-                    dayMap[log.dateStr].entries.push(log.timeStr);
-                } else if (log.status === 'EXIT' || log.status === 'AUTO_EXIT') {
-                    dayMap[log.dateStr].exits.push(`${log.timeStr} (${log.status})`);
-                }
+                html += `<tr><td><b>${log.dayName || 'N/A'}</b></td><td>${log.dateStr}</td><td style="color:${log.status === 'ENTRY' ? 'green' : 'red'};"><b>${log.status}</b></td><td>${log.timeStr}</td><td>${log.extraNote}</td></tr>`;
             });
-
-            let latestDate = Object.keys(dayMap)[0];
-            let latestEntry = dayMap[latestDate]?.entries[0] || 'N/A';
-            let latestExit = dayMap[latestDate]?.exits[0] || 'N/A';
-            let latestDayName = dayMap[latestDate]?.dayName || 'N/A';
-
-            summaryElem.innerHTML = `
-                <p><b>📊 Total Unique Days Present:</b> <span style="color:green; font-weight:bold;">${uniqueDays.size} Days</span></p>
-                <p><b>📅 Latest Active Date:</b> ${latestDate} (${latestDayName})</p>
-                <p><b>🟢 Latest Entry Time:</b> ${latestEntry}</p>
-                <p><b>🔴 Latest Exit Time:</b> ${latestExit}</p>
-            `;
-
-            let html = `<table>
-                <tr>
-                    <th>Day</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Time</th>
-                    <th>Note</th>
-                </tr>`;
-
-            history.forEach(log => {
-                html += `<tr>
-                    <td><b>${log.dayName || 'N/A'}</b></td>
-                    <td>${log.dateStr}</td>
-                    <td style="color:${log.status === 'ENTRY' ? 'green' : 'red'};"><b>${log.status}</b></td>
-                    <td>${log.timeStr}</td>
-                    <td>${log.extraNote}</td>
-                </tr>`;
-            });
-
             html += `</table>`;
             container.innerHTML = html;
         }
         document.getElementById('history-modal').style.display = 'block';
     }
 
+    // رجسٹریشن کے وقت فوٹو کلاؤڈانری پر اپ لوڈ کریں اور آئی ڈی کارڈ + QR کوڈ بنائیں
     async function captureAndRegisterStudent() {
         const id = document.getElementById('reg-id').value.trim();
         const name = document.getElementById('reg-name').value.trim();
@@ -363,35 +355,61 @@
             return;
         }
 
-        regMsg.innerHTML = '<span style="color:blue;">🎥 Turning on camera and scanning face... Please look at the camera.</span>';
+        regMsg.innerHTML = '<span style="color:blue;">🎥 Turning on camera and scanning face... Please look straight.</span>';
         
         try {
-            // Camera only starts HERE when button is clicked
             await openCameraStream();
-
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
             if (!detection) {
                 stopCameraStream();
-                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly in front of the camera and try again.</span>';
+                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly.</span>';
                 return;
             }
 
-            const db = getRegisteredStudents();
-            db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor) };
-            saveRegisteredStudents(db);
-            
-            // Turn off camera immediately after capture
+            // کینوس پر فوٹو کھینچیں
+            const canvas = document.getElementById('hidden-canvas');
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            const photoDataUrl = canvas.toDataURL('image/jpeg');
+
             stopCameraStream();
+            regMsg.innerHTML = '<span style="color:blue;">☁️ Uploading photo to Cloudinary & generating ID Card...</span>';
+
+            // فوٹو کلاؤڈانری پر اپ لوڈ کریں تاکہ لنک مل سکے
+            const formData = new FormData();
+            formData.append('file', photoDataUrl);
+            formData.append('upload_preset', CONFIG.cloudinaryPreset);
+
+            const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.cloudinaryCloudName}/image/upload`, { method: 'POST', body: formData });
+            const uploadData = await uploadRes.json();
+            const photoUrl = uploadData.secure_url || photoDataUrl;
+
+            // ڈیٹا بیس میں محفوظ کریں
+            const db = getRegisteredStudents();
+            db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor), photoUrl: photoUrl };
+            saveRegisteredStudents(db);
+
             regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully!</span>`;
 
-            setTimeout(() => { 
-                closeRegistrationModal(); 
-            }, 1500);
+            // ID Card اور QR Code UI شو کریں
+            document.getElementById('card-img').src = photoUrl;
+            document.getElementById('card-name').innerText = name;
+            document.getElementById('card-id').innerText = id;
+            
+            // QR Code جنریٹ کریں جس میں اسٹوڈنٹ آئی ڈی انکوڈ ہو
+            document.getElementById('qrcode-container').innerHTML = '';
+            new QRCode(document.getElementById('qrcode-container'), {
+                text: id,
+                width: 100,
+                height: 100
+            });
+
+            document.getElementById('id-card-output').style.display = 'block';
+
         } catch (err) {
             stopCameraStream();
-            regMsg.innerHTML = `<span class="error">❌ Registration Error: ${err.message}</span>`;
+            regMsg.innerHTML = `<span class="error">❌ Error: ${err.message}</span>`;
         }
     }
 
@@ -403,7 +421,7 @@
 
         if (studentKeys.length === 0) {
             stopCameraStream();
-            statusInfo.innerHTML = '<b class="error">❌ No registered students found! Please register using the Admin panel.</b>';
+            statusInfo.innerHTML = '<b class="error">❌ No registered students found! Please register first.</b>';
             return;
         }
 
@@ -417,7 +435,6 @@
 
         faceDetectionInterval = setInterval(async () => {
             if (!video.srcObject || video.paused || video.ended) return;
-
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
@@ -425,125 +442,37 @@
                 const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
                 if (bestMatch.label !== 'unknown') {
                     clearInterval(faceDetectionInterval);
+                    stopCameraStream();
+                    
+                    const canvas = document.getElementById('hidden-canvas');
+                    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const livePhotoUrl = canvas.toDataURL('image/jpeg');
+
                     activeStudentId = bestMatch.label;
-                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name} (${activeStudentId})</b>`;
-                    verifyInitialLocationAndProcess();
-                } else {
-                    statusInfo.innerHTML = '<b class="error">❌ Unregistered Face Detected! Face profile not found in system.</b>';
+                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name}</b>`;
+                    
+                    // چہرے والے اسکین میں لائیو تصویر کلاؤڈانری پر بھیجی جائے گی
+                    uploadLivePhotoAndProcess(livePhotoUrl, registeredDB[activeStudentId], 'Face-Scan');
                 }
             }
         }, 1000);
     }
 
-    function verifyInitialLocationAndProcess() {
-        const result = document.getElementById('result');
-        if (!navigator.geolocation) {
-            processAttendanceAndSMS();
-            return;
-        }
+    // لائیو فوٹو کلاؤڈانری پر اپ لوڈ کرنے کا فنکشن (چہرے کے اسکین کے لیے)
+    function uploadLivePhotoAndProcess(photoDataUrl, student, mode) {
+        const formData = new FormData();
+        formData.append('file', photoDataUrl);
+        formData.append('upload_preset', CONFIG.cloudinaryPreset);
 
-        result.innerHTML = '<p style="color: blue;">Checking location permissions...</p>';
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                const distance = calculateDistance(position.coords.latitude, position.coords.longitude, CONFIG.allowedLat, CONFIG.allowedLng);
-                if (distance <= CONFIG.allowedRadius) {
-                    processAttendanceAndSMS();
-                    startContinuousGeofenceMonitoring();
-                } else {
-                    stopCameraStream();
-                    result.innerHTML = '<p class="error">❌ Access Denied! You are currently outside the designated location radius.</p>';
-                }
-            },
-            () => {
-                processAttendanceAndSMS();
-                startContinuousGeofenceMonitoring();
-            },
-            { enableHighAccuracy: true, timeout: 5000 }
-        );
-    }
-
-    function startContinuousGeofenceMonitoring() {
-        if (!navigator.geolocation) return;
-
-        isInsideGeofence = true;
-        const geoStatusElem = document.getElementById('geo-status');
-        geoStatusElem.innerHTML = '<span style="color:green;">📡 Live Geofence Monitoring Active...</span>';
-
-        watchGeoId = navigator.geolocation.watchPosition(
-            position => {
-                const distance = calculateDistance(position.coords.latitude, position.coords.longitude, CONFIG.allowedLat, CONFIG.allowedLng);
-
-                if (distance > CONFIG.allowedRadius && isInsideGeofence) {
-                    isInsideGeofence = false;
-                    
-                    let currentStatus = localStorage.getItem(`last_type_${activeStudentId}`);
-
-                    if (currentStatus === 'EXIT' || currentStatus === 'AUTO_EXIT') {
-                        geoStatusElem.innerHTML = '<span style="color:blue;">ℹ️ Student already scanned and EXITED. Geofence alert bypassed.</span>';
-                        return;
-                    }
-
-                    geoStatusElem.innerHTML = '<span class="error">🚨 Boundary exit detected without face scan! Sending Auto-EXIT SMS...</span>';
-                    
-                    const now = new Date();
-                    const currentDateStr = getFormattedDate(now);
-                    const currentTimeStr = getFormattedTime(now);
-                    const currentDayName = getFormattedDayName(now);
-
-                    localStorage.setItem(`last_type_${activeStudentId}`, 'AUTO_EXIT');
-                    localStorage.setItem(`last_time_${activeStudentId}`, now.getTime());
-
-                    const registeredDB = getRegisteredStudents();
-                    addHistoryLog(activeStudentId, registeredDB[activeStudentId].name, 'AUTO_EXIT', currentTimeStr, currentDateStr, currentDayName, 'Exited Boundary Without Face Scan');
-
-                    triggerAutoExitSMS();
-                } else if (distance <= CONFIG.allowedRadius) {
-                    isInsideGeofence = true;
-                }
-            },
-            err => console.warn('GPS Tracking Error:', err.message),
-            { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-        );
-    }
-
-    function triggerAutoExitSMS() {
-        const registeredDB = getRegisteredStudents();
-        const student = registeredDB[activeStudentId];
-        if (!student) return;
-
-        const now = new Date();
-        const currentTime = getFormattedTime(now);
-        const today = getFormattedDate(now);
-        const uniqueToken = Math.floor(1000 + Math.random() * 9000);
-
-        const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT FACE SCAN at ${currentTime} on ${today}. Code: ${uniqueToken}`;
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
-
-        fetch(url, { method: 'GET' })
+        fetch(`https://api.cloudinary.com/v1_1/${CONFIG.cloudinaryCloudName}/image/upload`, { method: 'POST', body: formData })
             .then(res => res.json())
-            .then(response => {
-                const geoStatusElem = document.getElementById('geo-status');
-                if (response.return) {
-                    geoStatusElem.innerHTML += '<br><span class="success">✅ Geofence Exit Auto-SMS Sent!</span>';
-                }
-            });
+            .then(data => handleAttendanceRecord(student, data.secure_url || student.photoUrl, mode))
+            .catch(() => handleAttendanceRecord(student, student.photoUrl, mode));
     }
 
-    function processAttendanceAndSMS() {
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('hidden-canvas');
-        const context = canvas.getContext('2d');
+    // مشترکہ حاضری اور ایس ایم ایس لاجک
+    function handleAttendanceRecord(student, finalPhotoLink, scanMode) {
         const result = document.getElementById('result');
-
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        stopCameraStream();
-
-        const photoDataUrl = canvas.toDataURL('image/jpeg');
-        const photoNumber = `IMG-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-        const registeredDB = getRegisteredStudents();
-        const student = registeredDB[activeStudentId];
-
         const now = new Date();
         const todayStr = getFormattedDate(now);
         const currentTimeStr = getFormattedTime(now);
@@ -557,21 +486,18 @@
         let lastTime = parseInt(localStorage.getItem(lastTimeKey)) || 0;
         let lastDate = localStorage.getItem(lastDateKey);
 
-        extraMessageInfo = '';
+        extraMessageInfo = scanMode === 'QR-Scan' ? ' (QR Code Scan)' : ' (Face Scan)';
 
         if (lastDate && lastDate !== todayStr) {
             activeStatus = 'ENTRY';
-            extraMessageInfo = ' (Fresh Day Entry)';
+            extraMessageInfo += ' - Fresh Day Entry';
         } else if (lastType === 'ENTRY') {
             activeStatus = 'EXIT';
             if (lastTime > 0) {
-                extraMessageInfo = ` Total Time Spent: ${formatDuration(now.getTime() - lastTime)}`;
+                extraMessageInfo += ` - Total Time: ${formatDuration(now.getTime() - lastTime)}`;
             }
         } else {
             activeStatus = 'ENTRY';
-            if (lastType === 'AUTO_EXIT') {
-                extraMessageInfo = ' (Re-Entry After Unscanned Exit)';
-            }
         }
 
         localStorage.setItem(lastTypeKey, activeStatus);
@@ -581,51 +507,25 @@
         addHistoryLog(activeStudentId, student.name, activeStatus, currentTimeStr, todayStr, dayNameStr, extraMessageInfo);
 
         result.innerHTML = `
-            <p class="success">✅ Attendance Marked Successfully (${activeStatus})</p>
-            <img src="${photoDataUrl}" class="preview-img"><br>
+            <p class="success">✅ Attendance Marked Successfully (${activeStatus}) [${scanMode}]</p>
+            <img src="${finalPhotoLink}" class="preview-img"><br>
             <p><b>Student:</b> ${student.name} (${activeStudentId})</p>
-            <p id="upload-status" style="color: blue;">Uploading photo and sending notification SMS...</p>
+            <p id="upload-status" style="color: blue;">Sending notification SMS to parent...</p>
         `;
 
-        uploadPhotoAndSendSMS(photoDataUrl, student, photoNumber);
-    }
-
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371000;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + 
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+        sendAttendanceSMS(student, finalPhotoLink, scanMode);
     }
 
     function formatDuration(ms) {
         const totalSec = Math.floor(ms / 1000);
         const h = Math.floor(totalSec / 3600);
         const m = Math.floor((totalSec % 3600) / 60);
-        const s = totalSec % 60;
-        return `${h > 0 ? h + 'h ' : ''}${m}m ${s}s`;
+        return `${h > 0 ? h + 'h ' : ''}${m}m`;
     }
 
-    function uploadPhotoAndSendSMS(photoDataUrl, student, photoNumber) {
-        const formData = new FormData();
-        formData.append('file', photoDataUrl);
-        formData.append('upload_preset', CONFIG.cloudinaryPreset);
-
-        fetch(`https://api.cloudinary.com/v1_1/${CONFIG.cloudinaryCloudName}/image/upload`, { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => sendAttendanceSMS(student, photoNumber, data.secure_url || 'Link unavailable'))
-            .catch(() => sendAttendanceSMS(student, photoNumber, 'Link unavailable'));
-    }
-
-    function sendAttendanceSMS(student, photoNumber, photoLink) {
+    function sendAttendanceSMS(student, photoLink, scanMode) {
         const now = new Date();
-        const today = getFormattedDate(now);
-        const currentTime = getFormattedTime(now);
-        const uniqueToken = Math.floor(1000 + Math.random() * 9000);
-        const messageText = `Attendance Verified. ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${currentTime}, Code: ${uniqueToken}-${today}, Photo: ${photoLink}`;
-
+        const messageText = `Attendance (${scanMode}): ID ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${getFormattedTime(now)}, Photo: ${photoLink}`;
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=v3&sender_id=TXTIND&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
         fetch(url, { method: 'GET' })
@@ -634,8 +534,8 @@
                 const statusElem = document.getElementById('upload-status');
                 if (statusElem) {
                     statusElem.innerHTML = response.return 
-                        ? '<span class="success">➔ Photo Uploaded & Automatic SMS Sent!</span>' 
-                        : `<span class="error">❌ SMS Error: ${response.message}</span>`;
+                        ? '<span class="success">➔ Attendance Saved & SMS Sent Successfully!</span>' 
+                        : `<span class="error">❌ SMS Error</span>`;
                 }
             });
     }
