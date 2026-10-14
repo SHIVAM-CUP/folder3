@@ -6,7 +6,6 @@
     <title>DIGITAL ENTRY ATTENDANCE</title>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <!-- Include html5-qrcode library for live camera QR scanning -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <style>
         * { box-sizing: border-box; }
@@ -30,7 +29,7 @@
         .modal-content { background: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; text-align: left; max-height: 85vh; overflow-y: auto; }
         .form-group { margin-bottom: 12px; }
         .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
-        .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         .close-btn { background: #dc3545; }
         
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
@@ -41,7 +40,7 @@
         .summary-box p { margin: 4px 0; }
 
         .id-card { border: 2px solid #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 300px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .id-card h3 { margin: 0 0 10px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .id-card h3 { margin: 0 0 5px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         .id-card img { width: 90px; height: 110px; border-radius: 4px; object-fit: cover; border: 2px solid #007bff; margin-bottom: 8px; }
         .id-card h4 { margin: 5px 0; color: #333; font-size: 15px; }
         .id-card p { margin: 3px 0; font-size: 13px; color: #555; }
@@ -61,7 +60,7 @@
     <div>
         <button class="btn btn-scan" onclick="startFaceAttendance()">🔍 Start Face Verification</button>
         <button class="btn btn-qr" onclick="openQrScannerModal()">📱 Scan QR Code Attendance</button>
-        <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register Student</button>
+        <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register User</button>
         <button class="btn btn-history" onclick="openStudentAuthForHistory()">📜 View History Logs</button>
     </div>
 
@@ -74,7 +73,7 @@
 <div id="qr-modal" class="modal">
     <div class="modal-content" style="text-align: center;">
         <h3>📱 QR Code Live Scanner</h3>
-        <p>Please show the Student ID QR Code in front of the camera:</p>
+        <p>Please show your ID QR Code in front of the camera:</p>
         <div id="reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
         <p id="qr-scan-msg" class="status-msg"></p>
         <button class="btn close-btn" onclick="closeQrScannerModal()">Close Scanner</button>
@@ -83,9 +82,9 @@
 
 <div id="student-auth-modal" class="modal">
     <div class="modal-content">
-        <h3>🆔 Student Verification Required</h3>
+        <h3>🆔 ID Verification Required</h3>
         <div class="form-group">
-            <label>Enter Student ID:</label>
+            <label>Enter ID (Student/Worker/Library/Employee):</label>
             <input type="text" id="student-id-input" placeholder="e.g. STU101">
         </div>
         <p id="student-auth-error" class="error" style="display:none; font-size:12px;"></p>
@@ -120,17 +119,26 @@
 
 <div id="register-modal" class="modal">
     <div class="modal-content">
-        <h3>📝 Student Registration & ID Card</h3>
+        <h3>📝 User Registration & ID Card</h3>
         <div class="form-group">
-            <label>Student ID:</label>
-            <input type="text" id="reg-id" placeholder="e.g. STU101">
+            <label>Select Category / Role:</label>
+            <select id="reg-role">
+                <option value="Student">Student</option>
+                <option value="Worker">Worker</option>
+                <option value="Library Student">Library Student</option>
+                <option value="Employee">Employee</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>ID Number:</label>
+            <input type="text" id="reg-id" placeholder="e.g. STU101 or EMP202">
         </div>
         <div class="form-group">
             <label>Full Name:</label>
             <input type="text" id="reg-name" placeholder="e.g. John Doe">
         </div>
         <div class="form-group">
-            <label>Parent Mobile No (SMS):</label>
+            <label>Parent / Mobile No (SMS):</label>
             <input type="text" id="reg-parent" placeholder="e.g. 919876543210">
         </div>
         <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
@@ -138,9 +146,10 @@
         
         <div id="id-card-output" style="display:none; text-align: center;">
             <div class="id-card" id="printable-card">
-                <h3>SCHOOL ID CARD</h3>
-                <img id="card-img" src="" alt="Student Photo">
+                <h3 id="card-title">OFFICIAL ID CARD</h3>
+                <img id="card-img" src="" alt="Photo">
                 <h4 id="card-name"></h4>
+                <p><b>Role:</b> <span id="card-role" style="color:#007bff; font-weight:bold;"></span></p>
                 <p><b>ID:</b> <span id="card-id"></span></p>
                 <div id="qrcode-container"></div>
             </div>
@@ -285,7 +294,7 @@
             { facingMode: "environment" },
             { fps: 15, qrbox: { width: 250, height: 250 } },
             onQrScanSuccess,
-            (errorMessage) => { /* Ignore minor scanning errors */ }
+            (errorMessage) => {}
         ).catch(err => {
             document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Camera Error: ${err}</span>`;
         });
@@ -305,7 +314,7 @@
         const registeredDB = getRegisteredStudents();
 
         if (!registeredDB[studentId]) {
-            document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Unregistered Student ID: ${studentId}</span>`;
+            document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Unregistered ID: ${studentId}</span>`;
             return;
         }
 
@@ -333,7 +342,7 @@
         const registeredDB = getRegisteredStudents();
 
         if (!studentId || !registeredDB[studentId]) {
-            errorElem.innerText = '❌ Student ID not found in the system!';
+            errorElem.innerText = '❌ ID not found in the system!';
             errorElem.style.display = 'block';
             return;
         }
@@ -346,8 +355,9 @@
         const history = allHistory.filter(log => log.studentId === studentId);
         const registeredDB = getRegisteredStudents();
         const studentName = registeredDB[studentId]?.name || studentId;
+        const studentRole = registeredDB[studentId]?.role || 'User';
 
-        document.getElementById('history-title').innerText = `📜 Attendance History: ${studentName} (${studentId})`;
+        document.getElementById('history-title').innerText = `📜 History: ${studentName} (${studentId}) [${studentRole}]`;
         let container = document.getElementById('history-table-container');
         let summaryElem = document.getElementById('summary-container');
 
@@ -370,6 +380,7 @@
     }
 
     async function captureAndRegisterStudent() {
+        const role = document.getElementById('reg-role').value;
         const id = document.getElementById('reg-id').value.trim();
         const name = document.getElementById('reg-name').value.trim();
         const parent = document.getElementById('reg-parent').value.trim();
@@ -399,7 +410,7 @@
             const photoDataUrl = canvas.toDataURL('image/jpeg');
 
             stopCameraStream();
-            regMsg.innerHTML = '<span style="color:blue;">☁️ Uploading photo to Cloudinary & generating ID Card...</span>';
+            regMsg.innerHTML = '<span style="color:blue;">☁️ Uploading photo & generating ID Card...</span>';
 
             const formData = new FormData();
             formData.append('file', photoDataUrl);
@@ -410,13 +421,15 @@
             const photoUrl = uploadData.secure_url || photoDataUrl;
 
             const db = getRegisteredStudents();
-            db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor), photoUrl: photoUrl };
+            db[id] = { role, id, name, parent, descriptor: Array.from(detection.descriptor), photoUrl: photoUrl };
             saveRegisteredStudents(db);
 
-            regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully!</span>`;
+            regMsg.innerHTML = `<span class="success">✅ ${role} ${name} registered successfully!</span>`;
 
+            document.getElementById('card-title').innerText = `${role.toUpperCase()} ID CARD`;
             document.getElementById('card-img').src = photoUrl;
             document.getElementById('card-name').innerText = name;
+            document.getElementById('card-role').innerText = role;
             document.getElementById('card-id').innerText = id;
             
             document.getElementById('qrcode-container').innerHTML = '';
@@ -442,7 +455,7 @@
 
         if (studentKeys.length === 0) {
             stopCameraStream();
-            statusInfo.innerHTML = '<b class="error">❌ No registered students found! Please register first.</b>';
+            statusInfo.innerHTML = '<b class="error">❌ No registered profiles found! Please register first.</b>';
             return;
         }
 
@@ -470,7 +483,7 @@
                     const livePhotoUrl = canvas.toDataURL('image/jpeg');
 
                     activeStudentId = bestMatch.label;
-                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name}</b>`;
+                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name} (${registeredDB[activeStudentId].role})</b>`;
                     
                     verifyInitialLocationAndProcess(registeredDB[activeStudentId], livePhotoUrl, 'Face-Scan');
                 }
@@ -521,7 +534,7 @@
                     
                     let currentStatus = localStorage.getItem(`last_type_${activeStudentId}`);
                     if (currentStatus === 'EXIT' || currentStatus === 'AUTO_EXIT') {
-                        geoStatusElem.innerHTML = '<span style="color:blue;">ℹ️ Student already EXITED. Geofence alert bypassed.</span>';
+                        geoStatusElem.innerHTML = '<span style="color:blue;">ℹ️ Already EXITED. Geofence alert bypassed.</span>';
                         return;
                     }
 
@@ -554,7 +567,7 @@
         if (!student) return;
 
         const now = new Date();
-        const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
+        const messageText = `ALERT: ${student.role} ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
         
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
@@ -606,8 +619,6 @@
 
         extraMessageInfo = scanMode === 'QR-Scan' ? ' (QR Code Scan)' : ' (Face Scan)';
 
-        .trim();
-
         if (lastDate && lastDate !== todayStr) {
             activeStatus = 'ENTRY';
             extraMessageInfo += ' - Fresh Day Entry';
@@ -629,8 +640,8 @@
         result.innerHTML = `
             <p class="success">✅ Attendance Marked Successfully (${activeStatus}) [${scanMode}]</p>
             <img src="${finalPhotoLink}" class="preview-img"><br>
-            <p><b>Student:</b> ${student.name} (${activeStudentId})</p>
-            <p id="upload-status" style="color: blue;">Sending notification SMS to parent...</p>
+            <p><b>Role:</b> ${student.role} | <b>Name:</b> ${student.name} (${activeStudentId})</p>
+            <p id="upload-status" style="color: blue;">Sending notification SMS...</p>
         `;
 
         sendAttendanceSMS(student, finalPhotoLink, scanMode);
@@ -655,7 +666,7 @@
 
     function sendAttendanceSMS(student, photoLink, scanMode) {
         const now = new Date();
-        const messageText = `Attendance (${scanMode}): ID ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${getFormattedTime(now)}, Photo: ${photoLink}`;
+        const messageText = `Attendance (${scanMode}): [${student.role}] ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${getFormattedTime(now)}, Photo: ${photoLink}`;
         
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
