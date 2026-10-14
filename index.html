@@ -40,12 +40,12 @@
         .summary-box { background: #e7f3fe; border-left: 5px solid #2196F3; padding: 12px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; text-align: left; }
         .summary-box p { margin: 4px 0; }
 
-        .id-card { border: 2px solid #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 280px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .id-card { border: 2px solid #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 300px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .id-card h3 { margin: 0 0 10px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-        .id-card img { width: 85px; height: 85px; border-radius: 50%; object-fit: cover; border: 2px solid #007bff; margin-bottom: 8px; }
+        .id-card img { width: 90px; height: 110px; border-radius: 4px; object-fit: cover; border: 2px solid #007bff; margin-bottom: 8px; }
         .id-card h4 { margin: 5px 0; color: #333; font-size: 15px; }
         .id-card p { margin: 3px 0; font-size: 13px; color: #555; }
-        #qrcode-container { margin-top: 10px; display: inline-block; background: #fff; padding: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        #qrcode-container { margin-top: 10px; display: inline-block; background: #fff; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -144,7 +144,7 @@
                 <p><b>ID:</b> <span id="card-id"></span></p>
                 <div id="qrcode-container"></div>
             </div>
-            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully!</p>
+            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully with Larger Square QR Code & Rectangular Photo!</p>
         </div>
 
         <button class="btn close-btn" onclick="closeRegistrationModal()">Close</button>
@@ -272,7 +272,6 @@
         closeModal('register-modal'); 
     }
 
-    // Open Live QR Code Scanner Camera
     function openQrScannerModal() {
         stopCameraStream();
         document.getElementById('qr-scan-msg').innerHTML = '';
@@ -303,7 +302,6 @@
             return;
         }
 
-        // Stop scanner and process attendance
         closeQrScannerModal();
         activeStudentId = studentId;
         verifyInitialLocationAndProcess(registeredDB[studentId], registeredDB[studentId].photoUrl || 'QR-Scan-Mode', 'QR-Scan');
@@ -412,11 +410,12 @@
             document.getElementById('card-name').innerText = name;
             document.getElementById('card-id').innerText = id;
             
+            // Increased QR Code size to 200x200 for a larger square display
             document.getElementById('qrcode-container').innerHTML = '';
             new QRCode(document.getElementById('qrcode-container'), {
                 text: id,
-                width: 130,
-                height: 130
+                width: 200,
+                height: 200
             });
 
             document.getElementById('id-card-output').style.display = 'block';
@@ -658,7 +657,6 @@
                     if (response.return) {
                         statusElem.innerHTML = '<span class="success">➔ Attendance Saved & SMS Sent Successfully!</span>';
                     } else {
-                        // Display the exact error reason from Fast2SMS instead of generic text
                         statusElem.innerHTML = `<span class="error">❌ SMS Failed: ${response.message || 'Unknown reason'}</span>`;
                     }
                 }
