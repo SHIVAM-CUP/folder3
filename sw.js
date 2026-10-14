@@ -1,25 +1,44 @@
-const CACHE_NAME = 'attendance-app-v1';
-const assetsToCache = [
-  './index.html',
-  'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
-  'https://unpkg.com/html5-qrcode'
+const CACHE_NAME = 'attendance-app-v2';
+const urlsToCache = [
+  './',
+  './index.html'
 ];
 
-// Install Service Worker and Cache files
+// Install Service Worker
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(assetsToCache);
+      return cache.addAll(urlsToCache);
     })
   );
+  self.skipWaiting();
 });
 
-// Serve Cached files when Offline
+// Activate and clean old caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  self.clientsClaim();
+});
+
+// Fetch Strategy: Network first, fallback to cache
 self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        return response;
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      })
   );
 });
