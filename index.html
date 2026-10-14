@@ -29,7 +29,7 @@
         .modal-content { background: white; margin: 5% auto; padding: 20px; border-radius: 10px; width: 95%; max-width: 600px; text-align: left; max-height: 85vh; overflow-y: auto; }
         .form-group { margin-bottom: 12px; }
         .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 13px; }
-        .form-group input, .form-group select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
         .close-btn { background: #dc3545; }
         
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
@@ -40,7 +40,7 @@
         .summary-box p { margin: 4px 0; }
 
         .id-card { border: 2px solid #007bff; background: #fff; padding: 15px; border-radius: 10px; text-align: center; margin-top: 15px; width: 300px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .id-card h3 { margin: 0 0 5px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .id-card h3 { margin: 0 0 10px 0; color: #007bff; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
         .id-card img { width: 90px; height: 110px; border-radius: 4px; object-fit: cover; border: 2px solid #007bff; margin-bottom: 8px; }
         .id-card h4 { margin: 5px 0; color: #333; font-size: 15px; }
         .id-card p { margin: 3px 0; font-size: 13px; color: #555; }
@@ -52,6 +52,7 @@
 <div class="container">
     <h2>📷 DIGITAL ENTRY ATTENDANCE</h2>
     <p id="status-info" style="color: blue;">Loading AI Models...</p>
+    <div id="network-status" style="font-size: 12px; font-weight: bold; margin-bottom: 8px;"></div>
 
     <div id="video-container">
         <video id="video" autoplay playsinline muted></video>
@@ -60,7 +61,7 @@
     <div>
         <button class="btn btn-scan" onclick="startFaceAttendance()">🔍 Start Face Verification</button>
         <button class="btn btn-qr" onclick="openQrScannerModal()">📱 Scan QR Code Attendance</button>
-        <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register User</button>
+        <button class="btn btn-admin" onclick="openAdminAuth()">➕ Register Student</button>
         <button class="btn btn-history" onclick="openStudentAuthForHistory()">📜 View History Logs</button>
     </div>
 
@@ -73,7 +74,7 @@
 <div id="qr-modal" class="modal">
     <div class="modal-content" style="text-align: center;">
         <h3>📱 QR Code Live Scanner</h3>
-        <p>Please show your ID QR Code in front of the camera:</p>
+        <p>Please show the Student ID QR Code in front of the camera:</p>
         <div id="reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
         <p id="qr-scan-msg" class="status-msg"></p>
         <button class="btn close-btn" onclick="closeQrScannerModal()">Close Scanner</button>
@@ -82,9 +83,9 @@
 
 <div id="student-auth-modal" class="modal">
     <div class="modal-content">
-        <h3>🆔 ID Verification Required</h3>
+        <h3>🆔 Student Verification Required</h3>
         <div class="form-group">
-            <label>Enter ID (Student/Worker/Library/Employee):</label>
+            <label>Enter Student ID:</label>
             <input type="text" id="student-id-input" placeholder="e.g. STU101">
         </div>
         <p id="student-auth-error" class="error" style="display:none; font-size:12px;"></p>
@@ -119,26 +120,17 @@
 
 <div id="register-modal" class="modal">
     <div class="modal-content">
-        <h3>📝 User Registration & ID Card</h3>
+        <h3>📝 Student Registration & ID Card</h3>
         <div class="form-group">
-            <label>Select Category / Role:</label>
-            <select id="reg-role">
-                <option value="Student">Student</option>
-                <option value="Worker">Worker</option>
-                <option value="Library Student">Library Student</option>
-                <option value="Employee">Employee</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>ID Number:</label>
-            <input type="text" id="reg-id" placeholder="e.g. STU101 or EMP202">
+            <label>Student ID:</label>
+            <input type="text" id="reg-id" placeholder="e.g. STU101">
         </div>
         <div class="form-group">
             <label>Full Name:</label>
             <input type="text" id="reg-name" placeholder="e.g. John Doe">
         </div>
         <div class="form-group">
-            <label>Parent / Mobile No (SMS):</label>
+            <label>Parent Mobile No (SMS):</label>
             <input type="text" id="reg-parent" placeholder="e.g. 919876543210">
         </div>
         <p id="reg-msg" class="status-msg" style="font-size: 13px;"></p>
@@ -146,10 +138,9 @@
         
         <div id="id-card-output" style="display:none; text-align: center;">
             <div class="id-card" id="printable-card">
-                <h3 id="card-title">OFFICIAL ID CARD</h3>
-                <img id="card-img" src="" alt="Photo">
+                <h3>SCHOOL ID CARD</h3>
+                <img id="card-img" src="" alt="Student Photo">
                 <h4 id="card-name"></h4>
-                <p><b>Role:</b> <span id="card-role" style="color:#007bff; font-weight:bold;"></span></p>
                 <p><b>ID:</b> <span id="card-id"></span></p>
                 <div id="qrcode-container"></div>
             </div>
@@ -181,6 +172,21 @@
     let isInsideGeofence = true;
     let modelsLoaded = false;
     let html5QrCodeScanner = null;
+
+    // Monitor Online/Offline Status and Sync Pending SMS
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    function updateOnlineStatus() {
+        const netStatus = document.getElementById('network-status');
+        if (navigator.onLine) {
+            netStatus.innerHTML = '<span style="color:green;">🟢 Online: Connected to Internet</span>';
+            syncPendingSMS();
+        } else {
+            netStatus.innerHTML = '<span style="color:orange;">🟠 Offline Mode: Attendance will be saved locally</span>';
+        }
+    }
+    window.onload = updateOnlineStatus;
 
     function getRegisteredStudents() {
         return JSON.parse(localStorage.getItem('registered_students_db')) || {};
@@ -294,7 +300,7 @@
             { facingMode: "environment" },
             { fps: 15, qrbox: { width: 250, height: 250 } },
             onQrScanSuccess,
-            (errorMessage) => {}
+            (errorMessage) => { /* Ignore minor scanning errors */ }
         ).catch(err => {
             document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Camera Error: ${err}</span>`;
         });
@@ -314,7 +320,7 @@
         const registeredDB = getRegisteredStudents();
 
         if (!registeredDB[studentId]) {
-            document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Unregistered ID: ${studentId}</span>`;
+            document.getElementById('qr-scan-msg').innerHTML = `<span class="error">❌ Unregistered Student ID: ${studentId}</span>`;
             return;
         }
 
@@ -342,7 +348,7 @@
         const registeredDB = getRegisteredStudents();
 
         if (!studentId || !registeredDB[studentId]) {
-            errorElem.innerText = '❌ ID not found in the system!';
+            errorElem.innerText = '❌ Student ID not found in the system!';
             errorElem.style.display = 'block';
             return;
         }
@@ -355,9 +361,8 @@
         const history = allHistory.filter(log => log.studentId === studentId);
         const registeredDB = getRegisteredStudents();
         const studentName = registeredDB[studentId]?.name || studentId;
-        const studentRole = registeredDB[studentId]?.role || 'User';
 
-        document.getElementById('history-title').innerText = `📜 History: ${studentName} (${studentId}) [${studentRole}]`;
+        document.getElementById('history-title').innerText = `📜 Attendance History: ${studentName} (${studentId})`;
         let container = document.getElementById('history-table-container');
         let summaryElem = document.getElementById('summary-container');
 
@@ -380,7 +385,6 @@
     }
 
     async function captureAndRegisterStudent() {
-        const role = document.getElementById('reg-role').value;
         const id = document.getElementById('reg-id').value.trim();
         const name = document.getElementById('reg-name').value.trim();
         const parent = document.getElementById('reg-parent').value.trim();
@@ -396,17 +400,12 @@
         
         try {
             await openCameraStream();
-            
-            // Give 1 second for the camera stream to stabilize and render properly
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Restored robust detection options with lower threshold (0.3) for reliable detection
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
             if (!detection) {
                 stopCameraStream();
-                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly in front of the camera.</span>';
+                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly.</span>';
                 return;
             }
 
@@ -415,26 +414,28 @@
             const photoDataUrl = canvas.toDataURL('image/jpeg');
 
             stopCameraStream();
-            regMsg.innerHTML = '<span style="color:blue;">☁️ Uploading photo & generating ID Card...</span>';
+            regMsg.innerHTML = '<span style="color:blue;">☁️ Uploading photo to Cloudinary & generating ID Card...</span>';
 
-            const formData = new FormData();
-            formData.append('file', photoDataUrl);
-            formData.append('upload_preset', CONFIG.cloudinaryPreset);
-
-            const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.cloudinaryCloudName}/image/upload`, { method: 'POST', body: formData });
-            const uploadData = await uploadRes.json();
-            const photoUrl = uploadData.secure_url || photoDataUrl;
+            let photoUrl = photoDataUrl;
+            if (navigator.onLine) {
+                try {
+                    const formData = new FormData();
+                    formData.append('file', photoDataUrl);
+                    formData.append('upload_preset', CONFIG.cloudinaryPreset);
+                    const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${CONFIG.cloudinaryCloudName}/image/upload`, { method: 'POST', body: formData });
+                    const uploadData = await uploadRes.json();
+                    if(uploadData.secure_url) photoUrl = uploadData.secure_url;
+                } catch(e) { console.log("Cloudinary upload failed offline, using local data url"); }
+            }
 
             const db = getRegisteredStudents();
-            db[id] = { role, id, name, parent, descriptor: Array.from(detection.descriptor), photoUrl: photoUrl };
+            db[id] = { id, name, parent, descriptor: Array.from(detection.descriptor), photoUrl: photoUrl };
             saveRegisteredStudents(db);
 
-            regMsg.innerHTML = `<span class="success">✅ ${role} ${name} registered successfully!</span>`;
+            regMsg.innerHTML = `<span class="success">✅ Student ${name} registered successfully!</span>`;
 
-            document.getElementById('card-title').innerText = `${role.toUpperCase()} ID CARD`;
             document.getElementById('card-img').src = photoUrl;
             document.getElementById('card-name').innerText = name;
-            document.getElementById('card-role').innerText = role;
             document.getElementById('card-id').innerText = id;
             
             document.getElementById('qrcode-container').innerHTML = '';
@@ -460,7 +461,7 @@
 
         if (studentKeys.length === 0) {
             stopCameraStream();
-            statusInfo.innerHTML = '<b class="error">❌ No registered profiles found! Please register first.</b>';
+            statusInfo.innerHTML = '<b class="error">❌ No registered students found! Please register first.</b>';
             return;
         }
 
@@ -472,13 +473,9 @@
         const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
         statusInfo.innerText = '🔍 Look at the camera, AI is recognizing your face...';
 
-        // Give camera 1 second to stabilize before starting recognition loop
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
         faceDetectionInterval = setInterval(async () => {
             if (!video.srcObject || video.paused || video.ended) return;
-            // Restored original reliable face detection options
-            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
+            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
             if (detection) {
@@ -492,12 +489,12 @@
                     const livePhotoUrl = canvas.toDataURL('image/jpeg');
 
                     activeStudentId = bestMatch.label;
-                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name} (${registeredDB[activeStudentId].role})</b>`;
+                    statusInfo.innerHTML = `<b style="color:green;">✅ Face Verified: ${registeredDB[activeStudentId].name}</b>`;
                     
                     verifyInitialLocationAndProcess(registeredDB[activeStudentId], livePhotoUrl, 'Face-Scan');
                 }
             }
-        }, 800);
+        }, 1000);
     }
 
     function verifyInitialLocationAndProcess(student, finalPhotoLink, scanMode) {
@@ -543,7 +540,7 @@
                     
                     let currentStatus = localStorage.getItem(`last_type_${activeStudentId}`);
                     if (currentStatus === 'EXIT' || currentStatus === 'AUTO_EXIT') {
-                        geoStatusElem.innerHTML = '<span style="color:blue;">ℹ️ Already EXITED. Geofence alert bypassed.</span>';
+                        geoStatusElem.innerHTML = '<span style="color:blue;">ℹ️ Student already EXITED. Geofence alert bypassed.</span>';
                         return;
                     }
 
@@ -576,28 +573,13 @@
         if (!student) return;
 
         const now = new Date();
-        const messageText = `ALERT: ${student.role} ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
+        const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
         
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
-
-        fetch(url, { method: 'GET', mode: 'cors' })
-            .then(res => res.json())
-            .then(response => {
-                const geoStatusElem = document.getElementById('geo-status');
-                if (response.return) {
-                    geoStatusElem.innerHTML += '<br><span class="success">✅ Geofence Exit Auto-SMS Sent!</span>';
-                } else {
-                    geoStatusElem.innerHTML += `<br><span class="error">❌ SMS Error: ${response.message || 'Unknown error'}</span>`;
-                }
-            })
-            .catch(err => {
-                const geoStatusElem = document.getElementById('geo-status');
-                geoStatusElem.innerHTML += `<br><span class="error">❌ SMS Network/CORS Error: ${err.message}</span>`;
-            });
+        sendSMSWithQueue(student.parent, messageText);
     }
 
     function uploadPhotoAndProcessAttendance(student, photoSource, scanMode) {
-        if (scanMode === 'Face-Scan' && photoSource.startsWith('data:image')) {
+        if (scanMode === 'Face-Scan' && photoSource.startsWith('data:image') && navigator.onLine) {
             const formData = new FormData();
             formData.append('file', photoSource);
             formData.append('upload_preset', CONFIG.cloudinaryPreset);
@@ -646,14 +628,17 @@
 
         addHistoryLog(activeStudentId, student.name, activeStatus, currentTimeStr, todayStr, dayNameStr, extraMessageInfo);
 
+        let offlineNote = navigator.onLine ? '' : ' <br><b style="color:orange;">(Saved Offline - SMS will send when internet returns)</b>';
+
         result.innerHTML = `
             <p class="success">✅ Attendance Marked Successfully (${activeStatus}) [${scanMode}]</p>
             <img src="${finalPhotoLink}" class="preview-img"><br>
-            <p><b>Role:</b> ${student.role} | <b>Name:</b> ${student.name} (${activeStudentId})</p>
-            <p id="upload-status" style="color: blue;">Sending notification SMS...</p>
+            <p><b>Student:</b> ${student.name} (${activeStudentId})</p>
+            <p id="upload-status" style="color: blue;">Processing notification SMS...${offlineNote}</p>
         `;
 
-        sendAttendanceSMS(student, finalPhotoLink, scanMode);
+        const messageText = `Attendance (${scanMode}): ID ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${currentTimeStr}`;
+        sendSMSWithQueue(student.parent, messageText);
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -673,11 +658,21 @@
         return `${h > 0 ? h + 'h ' : ''}${m}m`;
     }
 
-    function sendAttendanceSMS(student, photoLink, scanMode) {
-        const now = new Date();
-        const messageText = `Attendance (${scanMode}): [${student.role}] ID: ${activeStudentId}, Name: ${student.name}, Status: ${activeStatus}${extraMessageInfo}, Time: ${getFormattedTime(now)}, Photo: ${photoLink}`;
-        
-        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
+    // Queue system for Offline SMS
+    function sendSMSWithQueue(phone, message) {
+        if (!navigator.onLine) {
+            let pendingSMS = JSON.parse(localStorage.getItem('pending_sms_queue')) || [];
+            pendingSMS.push({ phone, message, time: new Date().getTime() });
+            localStorage.setItem('pending_sms_queue', JSON.stringify(pendingSMS));
+            
+            const statusElem = document.getElementById('upload-status');
+            if (statusElem) {
+                statusElem.innerHTML = '<span style="color:orange;">⚠️ Offline: SMS saved in queue and will send automatically when online!</span>';
+            }
+            return;
+        }
+
+        const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(message)}&language=english&flash=0&numbers=${phone}`;
 
         fetch(url, { method: 'GET', mode: 'cors' })
             .then(res => res.json())
@@ -687,16 +682,44 @@
                     if (response.return) {
                         statusElem.innerHTML = '<span class="success">➔ Attendance Saved & SMS Sent Successfully!</span>';
                     } else {
-                        statusElem.innerHTML = `<span class="error">❌ SMS Failed: ${response.message || 'Unknown error'}</span>`;
+                        statusElem.innerHTML = `<span class="error">❌ SMS Failed: ${response.message || 'Unknown reason'}</span>`;
                     }
                 }
             })
             .catch(err => {
                 const statusElem = document.getElementById('upload-status');
                 if (statusElem) {
-                    statusElem.innerHTML = `<span class="error">❌ SMS Network/CORS Error: ${err.message}</span>`;
+                    statusElem.innerHTML = `<span class="error">❌ SMS Network Error: ${err.message}</span>`;
                 }
             });
+    }
+
+    function syncPendingSMS() {
+        let pendingSMS = JSON.parse(localStorage.getItem('pending_sms_queue')) || [];
+        if (pendingSMS.length === 0) return;
+
+        let remainingSMS = [];
+        pendingSMS.forEach(item => {
+            const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(item.message)}&language=english&flash=0&numbers=${item.phone}`;
+            
+            fetch(url, { method: 'GET', mode: 'cors' })
+                .then(res => res.json())
+                .then(res => {
+                    if (!res.return) {
+                        remainingSMS.push(item); // Keep in queue if failed
+                    }
+                })
+                .catch(() => {
+                    remainingSMS.push(item); // Keep in queue if network error
+                });
+        });
+
+        setTimeout(() => {
+            localStorage.setItem('pending_sms_queue', JSON.stringify(remainingSMS));
+            if(pendingSMS.length > 0 && remainingSMS.length === 0) {
+                console.log("All pending offline SMS synced successfully!");
+            }
+        }, 3000);
     }
 </script>
 </body>
