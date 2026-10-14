@@ -396,12 +396,17 @@
         
         try {
             await openCameraStream();
+            
+            // Give 1 second for the camera stream to stabilize and render properly
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Restored robust detection options with lower threshold (0.3) for reliable detection
             const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
             if (!detection) {
                 stopCameraStream();
-                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly.</span>';
+                regMsg.innerHTML = '<span class="error">❌ No face detected! Please position your face clearly in front of the camera.</span>';
                 return;
             }
 
@@ -467,9 +472,13 @@
         const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
         statusInfo.innerText = '🔍 Look at the camera, AI is recognizing your face...';
 
+        // Give camera 1 second to stabilize before starting recognition loop
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
         faceDetectionInterval = setInterval(async () => {
             if (!video.srcObject || video.paused || video.ended) return;
-            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
+            // Restored original reliable face detection options
+            const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.3 });
             const detection = await faceapi.detectSingleFace(video, options).withFaceLandmarks().withFaceDescriptor();
 
             if (detection) {
@@ -488,7 +497,7 @@
                     verifyInitialLocationAndProcess(registeredDB[activeStudentId], livePhotoUrl, 'Face-Scan');
                 }
             }
-        }, 1000);
+        }, 800);
     }
 
     function verifyInitialLocationAndProcess(student, finalPhotoLink, scanMode) {
