@@ -144,7 +144,7 @@
                 <p><b>ID:</b> <span id="card-id"></span></p>
                 <div id="qrcode-container"></div>
             </div>
-            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully with Larger Square QR Code & Rectangular Photo!</p>
+            <p style="font-size: 11px; color: green; margin-top:5px;">✅ ID Card generated successfully!</p>
         </div>
 
         <button class="btn close-btn" onclick="closeRegistrationModal()">Close</button>
@@ -279,7 +279,7 @@
 
         if (!html5QrCodeScanner) {
             html5QrCodeScanner = new Html5QrcodeScanner(
-                "reader", { fps: 10, qrbox: { width: 250, height: 250 } }, false
+                "reader", { fps: 10, qrbox: { width: 220, height: 220 } }, false
             );
         }
         
@@ -308,7 +308,7 @@
     }
 
     function onQrScanError(errorMessage) {
-        // Suppress continuous minor scanning warnings
+        // Suppress continuous scanning minor errors
     }
 
     function openStudentAuthForHistory() {
@@ -410,12 +410,12 @@
             document.getElementById('card-name').innerText = name;
             document.getElementById('card-id').innerText = id;
             
-            // Increased QR Code size to 200x200 for a larger square display
+            // Optimized balanced QR code size (150x150) for easy and flawless scanning
             document.getElementById('qrcode-container').innerHTML = '';
             new QRCode(document.getElementById('qrcode-container'), {
                 text: id,
-                width: 200,
-                height: 200
+                width: 150,
+                height: 150
             });
 
             document.getElementById('id-card-output').style.display = 'block';
@@ -548,9 +548,10 @@
         const now = new Date();
         const messageText = `ALERT: Student ${student.name} (${activeStudentId}) left allowed location WITHOUT SCAN at ${getFormattedTime(now)} on ${getFormattedDate(now)}.`;
         
+        // Using CORS mode handling or standard safe fetch request
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
-        fetch(url, { method: 'GET' })
+        fetch(url, { method: 'GET', mode: 'cors' })
             .then(res => res.json())
             .then(response => {
                 const geoStatusElem = document.getElementById('geo-status');
@@ -562,7 +563,7 @@
             })
             .catch(err => {
                 const geoStatusElem = document.getElementById('geo-status');
-                geoStatusElem.innerHTML += `<br><span class="error">❌ SMS Network Error: ${err.message}</span>`;
+                geoStatusElem.innerHTML += `<br><span class="error">❌ SMS Network/CORS Error: ${err.message}</span>`;
             });
     }
 
@@ -649,7 +650,7 @@
         
         const url = `https://www.fast2sms.com/dev/bulkV2?authorization=${CONFIG.fast2SmsApiKey}&route=q&message=${encodeURIComponent(messageText)}&language=english&flash=0&numbers=${student.parent}`;
 
-        fetch(url, { method: 'GET' })
+        fetch(url, { method: 'GET', mode: 'cors' })
             .then(res => res.json())
             .then(response => {
                 const statusElem = document.getElementById('upload-status');
@@ -657,14 +658,14 @@
                     if (response.return) {
                         statusElem.innerHTML = '<span class="success">➔ Attendance Saved & SMS Sent Successfully!</span>';
                     } else {
-                        statusElem.innerHTML = `<span class="error">❌ SMS Failed: ${response.message || 'Unknown reason'}</span>`;
+                        statusElem.innerHTML = `<span class="error">❌ SMS Failed: ${response.message || 'Unknown error'}</span>`;
                     }
                 }
             })
             .catch(err => {
                 const statusElem = document.getElementById('upload-status');
                 if (statusElem) {
-                    statusElem.innerHTML = `<span class="error">❌ SMS Network Error: ${err.message}</span>`;
+                    statusElem.innerHTML = `<span class="error">❌ SMS Network/CORS Error: ${err.message}</span>`;
                 }
             });
     }
