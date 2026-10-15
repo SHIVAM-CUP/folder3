@@ -152,7 +152,6 @@
 </div>
 
 <script>
-    // Register Service Worker for Offline Support
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
@@ -182,7 +181,6 @@
     let modelsLoaded = false;
     let html5QrCodeScanner = null;
 
-    // Monitor Online/Offline Status and Sync Pending SMS
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
 
@@ -227,6 +225,7 @@
         localStorage.setItem('attendance_history_logs', JSON.stringify(history));
     }
 
+    // Safe AI Model Loader with Fallback so app never freezes
     Promise.all([
         faceapi.nets.tinyFaceDetector.loadFromUri(CONFIG.modelUrl),
         faceapi.nets.faceLandmark68Net.loadFromUri(CONFIG.modelUrl),
@@ -235,7 +234,8 @@
         modelsLoaded = true;
         document.getElementById('status-info').innerHTML = '<b style="color:green;">✅ AI Models Loaded! Ready for verification.</b>';
     }).catch(err => {
-        document.getElementById('status-info').innerHTML = `<b class="error">❌ AI Models Loading Failed: ${err.message}</b>`;
+        modelsLoaded = false;
+        document.getElementById('status-info').innerHTML = '<b style="color:orange;">⚠️ Face AI Offline. QR Scanner & Attendance Ready!</b>';
     });
 
     function openCameraStream() {
@@ -264,7 +264,10 @@
     }
 
     function startFaceAttendance() {
-        if (!modelsLoaded) { alert('AI Models are still loading. Please wait!'); return; }
+        if (!modelsLoaded) { 
+            alert('Face AI models are not loaded (check internet/network). You can still use QR Code scanning!'); 
+            return; 
+        }
         openCameraStream()
             .then(() => detectAndMatchFaceContinuously())
             .catch(() => { document.getElementById('status-info').innerHTML = '<b class="error">❌ Camera Access Denied!</b>'; });
